@@ -1,4 +1,7 @@
+import { type ProviderConfig } from './db';
+
 export interface StreamParams {
+  providerConfig: ProviderConfig;
   modelId: string;
   messages: Array<{
     role: string;
@@ -21,15 +24,6 @@ export interface StreamParams {
   };
   systemPrompt: string;
   temperature: number;
-  keys: {
-    gemini: string;
-    openai: string;
-    claude: string;
-    custom: string;
-  };
-  customEndpoint: string;
-  corsProxy: string;
-  customModels: string[];
 }
 
 /**
@@ -38,7 +32,6 @@ export interface StreamParams {
 function prepareContext(params: StreamParams, format: 'openai' | 'claude' | 'gemini') {
   const allMessages = [...params.messages];
   
-  // Format the messages list for API delivery
   return allMessages.map((msg) => {
     const images = msg.attachments?.filter((a) => a.type === 'image') || [];
     const filesText = msg.attachments
@@ -57,7 +50,6 @@ function prepareContext(params: StreamParams, format: 'openai' | 'claude' | 'gem
     if (format === 'gemini') {
       const parts: any[] = [];
       
-      // Images
       images.forEach((img) => {
         const matches = img.content.match(/^data:(image\/\w+);base64,(.+)$/);
         if (matches) {
@@ -70,7 +62,6 @@ function prepareContext(params: StreamParams, format: 'openai' | 'claude' | 'gem
         }
       });
 
-      // Text part must always be present or Gemini errors
       parts.push({ text: textContent || ' ' });
 
       return {
@@ -136,34 +127,28 @@ export async function streamChatCompletion(
   onChunk: (text: string) => void,
   signal: AbortSignal
 ): Promise<string> {
-  const { modelId, corsProxy } = params;
+  const { providerConfig, modelId } = params;
 
-  // 1. Identify Provider
-  let provider: 'gemini' | 'openai' | 'claude' | 'ollama' | 'custom' = 'openai';
-  
-  if (modelId.startsWith('gemini-')) {
-    provider = 'gemini';
-  } else if (modelId.startsWith('claude-')) {
-    provider = 'claude';
-  } else if (params.customModels.includes(modelId) && params.customEndpoint) {
-    provider = 'custom';
-  } else if (params.customModels.includes(modelId) && !params.customEndpoint) {
-    provider = 'ollama'; // Default custom models to Ollama if no customEndpoint is specified
+  if (!providerConfig.enabled) {
+    throw new Error(`プロバイダー ${providerConfig.name} は有効化されていません。設定画面で有効にしてください。`);
   }
 
-  // 2. Prepare Endpoint and Headers
+  // 1. Prepare Endpoint and Headers based on Provider
   let url = '';
   let headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
   let body: any = {};
 
-  if (provider === 'gemini') {
-    const key = params.keys.gemini;
-    if (!key) throw new Error('Gemini APIキーが設定されていません。設定画面でキーを入力してください。');
+  const corsPrefix = providerConfig.corsProxy ? `${providerConfig.corsProxy.replace(/\/$/, '')}/` : '';
+
+  if (providerConfig.id === 'gemini') {
+    if (!providerConfig.apiKey) {
+      throw new Error('Gemini APIキーが設定されていません。設定のConnections画面でキーを入力してください。');
+    }
     
-    // Gemini supports direct browser fetches
-    url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?key=${key}`;
+    // Gemini supports direct browser fetches (or via proxy if user configured)
+    url = `${corsPrefix}https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?key=${providerConfig.apiKey}`;
     const formattedMessages = prepareContext(params, 'gemini');
     
     body = {
@@ -176,18 +161,17 @@ export async function streamChatCompletion(
       },
     };
   } 
-  else if (provider === 'claude') {
-    const key = params.keys.claude;
-    if (!key) throw new Error('Anthropic APIキーが設定されていません。設定画面でキーを入力してください。');
+  else if (providerConfig.id === 'claude') {
+    if (!providerConfig.apiKey) {
+      throw new Error('Claude APIキーが設定されていません。設定のConnections画面でキーを入力してください。');
+    }
 
     const targetUrl = 'https://api.anthropic.com/v1/messages';
-    url = corsProxy ? `${corsProxy.replace(/\/$/, '')}/${targetUrl}` : targetUrl;
+    url = corsPrefix ? `${corsPrefix}${targetUrl}` : targetUrl;
     
-    headers['x-api-key'] = key;
+    headers['x-api-key'] = providerConfig.apiKey;
     headers['anthropic-version'] = '2023-06-01';
     
-    // Claude does not support the 'system' role inside the messages array,
-    // it must be passed as a top-level parameter.
     const messagesWithoutSystem = prepareContext(params, 'claude').filter(m => m.role !== 'system');
     
     body = {
@@ -199,32 +183,11 @@ export async function streamChatCompletion(
       stream: true,
     };
   } 
-  else if (provider === 'openai') {
-    const key = params.keys.openai;
-    if (!key) throw new Error('OpenAI APIキーが設定されていません。設定画面でキーを入力してください。');
-
-    const targetUrl = 'https://api.openai.com/v1/chat/completions';
-    url = corsProxy ? `${corsProxy.replace(/\/$/, '')}/${targetUrl}` : targetUrl;
-    
-    headers['Authorization'] = `Bearer ${key}`;
-    
+  else if (providerConfig.id === 'ollama') {
+    const base = providerConfig.baseUrl || 'http://localhost:11434';
+    url = `${corsPrefix}${base.replace(/\/$/, '')}/api/chat`;
     const formattedMessages = prepareContext(params, 'openai');
-    // Inject system prompt if not empty and not already present
-    if (params.systemPrompt && !formattedMessages.some(m => m.role === 'system')) {
-      formattedMessages.unshift({ role: 'system', content: params.systemPrompt });
-    }
-
-    body = {
-      model: modelId,
-      messages: formattedMessages,
-      temperature: params.temperature,
-      stream: true,
-    };
-  } 
-  else if (provider === 'ollama') {
-    // Local Ollama
-    url = 'http://localhost:11434/api/chat';
-    const formattedMessages = prepareContext(params, 'openai');
+    
     if (params.systemPrompt && !formattedMessages.some(m => m.role === 'system')) {
       formattedMessages.unshift({ role: 'system', content: params.systemPrompt });
     }
@@ -238,18 +201,20 @@ export async function streamChatCompletion(
       stream: true,
     };
   } 
-  else if (provider === 'custom') {
-    const key = params.keys.custom;
-    const base = params.customEndpoint.replace(/\/$/, '');
-    
-    // Check if URL already has path or needs /chat/completions
-    const targetUrl = base.includes('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`;
-    url = corsProxy ? `${corsProxy.replace(/\/$/, '')}/${targetUrl}` : targetUrl;
-
-    if (key) {
-      headers['Authorization'] = `Bearer ${key}`;
+  else {
+    // OpenAI, DeepSeek, Custom OpenAI-compatible endpoints
+    if (!providerConfig.baseUrl) {
+      throw new Error(`${providerConfig.name} のベースURLが設定されていません。`);
     }
 
+    const base = providerConfig.baseUrl.replace(/\/$/, '');
+    const path = base.includes('/v1') ? '/chat/completions' : '/v1/chat/completions';
+    url = `${corsPrefix}${base}${path}`;
+
+    if (providerConfig.apiKey) {
+      headers['Authorization'] = `Bearer ${providerConfig.apiKey}`;
+    }
+    
     const formattedMessages = prepareContext(params, 'openai');
     if (params.systemPrompt && !formattedMessages.some(m => m.role === 'system')) {
       formattedMessages.unshift({ role: 'system', content: params.systemPrompt });
@@ -263,7 +228,7 @@ export async function streamChatCompletion(
     };
   }
 
-  // 3. Perform fetch
+  // 2. Perform fetch
   const response = await fetch(url, {
     method: 'POST',
     headers,
@@ -276,14 +241,14 @@ export async function streamChatCompletion(
     try {
       errText = await response.text();
     } catch (_) {}
-    throw new Error(`APIリクエストがエラーを返しました (ステータス: ${response.status}): ${errText || response.statusText}`);
+    throw new Error(`APIリクエストエラー (ステータス: ${response.status}): ${errText || response.statusText}`);
   }
 
   if (!response.body) {
-    throw new Error('レスポンスボディが空です。ストリーミングを開始できません。');
+    throw new Error('レスポンスボディが空です。');
   }
 
-  // 4. Read stream and trigger onChunk
+  // 3. Read stream and trigger onChunk
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -302,10 +267,7 @@ export async function streamChatCompletion(
         const trimmed = line.trim();
         if (!trimmed) continue;
 
-        if (provider === 'gemini') {
-          // Gemini sends a continuous stream wrapped in an array, e.g.:
-          // [\n  {\n    "candidates": ...\n  },\n  {\n    "candidates": ...\n  }\n]
-          // Let's strip brackets and commas to extract the JSON objects.
+        if (providerConfig.id === 'gemini') {
           let cleanLine = trimmed;
           if (cleanLine.startsWith('[')) cleanLine = cleanLine.substring(1);
           if (cleanLine.endsWith(']')) cleanLine = cleanLine.slice(0, -1);
@@ -321,12 +283,9 @@ export async function streamChatCompletion(
               onChunk(textChunk);
               fullResponseText += textChunk;
             }
-          } catch (_) {
-            // Might be incomplete JSON chunk spanning lines
-          }
+          } catch (_) {}
         } 
-        else if (provider === 'ollama') {
-          // Ollama sends JSON objects line by line
+        else if (providerConfig.id === 'ollama') {
           try {
             const parsed = JSON.parse(trimmed);
             const textChunk = parsed.message?.content;
@@ -336,8 +295,7 @@ export async function streamChatCompletion(
             }
           } catch (_) {}
         } 
-        else if (provider === 'claude') {
-          // Claude SSE format: "event: ...", "data: ..."
+        else if (providerConfig.id === 'claude') {
           if (trimmed.startsWith('data:')) {
             const dataStr = trimmed.substring(5).trim();
             if (dataStr === '[DONE]') continue;
@@ -352,7 +310,7 @@ export async function streamChatCompletion(
           }
         } 
         else {
-          // OpenAI & Custom SSE format: "data: {...}"
+          // openai, deepseek, custom SSE
           if (trimmed.startsWith('data:')) {
             const dataStr = trimmed.substring(5).trim();
             if (dataStr === '[DONE]') continue;

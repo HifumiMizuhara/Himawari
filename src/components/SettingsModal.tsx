@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useChatStore } from '../store/useChatStore';
 import { db } from '../services/db';
-import { X, Key, Shield, Settings, Database, Eye, EyeOff } from 'lucide-react';
+import { X, Key, Shield, Settings, Database, Eye, EyeOff, Check, AlertCircle } from 'lucide-react';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -11,21 +11,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const store = useChatStore();
   const [activeTab, setActiveTab] = useState<'connections' | 'prompt' | 'data'>('connections');
   
-  // Show/hide API keys toggles
-  const [showGemini, setShowGemini] = useState(false);
-  const [showOpenAI, setShowOpenAI] = useState(false);
-  const [showClaude, setShowClaude] = useState(false);
-  const [showCustom, setShowCustom] = useState(false);
+  // Selected provider to configure in dropdown
+  const [selectedProviderId, setSelectedProviderId] = useState<string>('gemini');
+  
+  // Show/hide API key toggle
+  const [showKey, setShowKey] = useState(false);
+  
+  // Fetching state
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [fetchSuccess, setFetchSuccess] = useState(false);
 
-  // Custom model text state to allow input editing easily
-  const [customModelText, setCustomModelText] = useState(store.customModels.join(', '));
+  const activeProvider = store.providers[selectedProviderId] || store.providers.gemini;
 
-  const handleCustomModelsBlur = async () => {
-    const list = customModelText
-      .split(',')
-      .map((m) => m.trim())
-      .filter((m) => m.length > 0);
-    await store.updateSetting('customModels', list);
+  const handleProviderConfigChange = async (key: string, value: any) => {
+    await store.updateProvider(selectedProviderId, { [key]: value });
+  };
+
+  const handleFetchModels = async () => {
+    setIsFetchingModels(true);
+    setFetchError(null);
+    setFetchSuccess(false);
+    
+    try {
+      await store.fetchModelsForProvider(selectedProviderId);
+      setFetchSuccess(true);
+      setTimeout(() => setFetchSuccess(false), 3000);
+    } catch (err: any) {
+      setFetchError(err.message || 'モデルリストの取得に失敗しました。キーや接続先、CORSプロキシの設定を確認してください。');
+    } finally {
+      setIsFetchingModels(false);
+    }
   };
 
   const handleExportData = async () => {
@@ -70,7 +86,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             return;
           }
 
-          // Import chats and messages into Dexie
           await db.transaction('rw', [db.chats, db.messages], async () => {
             for (const chat of importObj.chats) {
               await db.chats.put(chat);
@@ -98,14 +113,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const handleClearAll = async () => {
     if (confirm('すべてのチャット履歴と設定データを削除しますか？この操作は取り消せません。')) {
       await store.clearAllChats();
-      // Keep keys but reset chats
       alert('すべてのチャット履歴が消去されました。');
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in">
-      <div className="relative flex flex-col w-full max-w-2xl h-[550px] bg-bg-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl shadow-2xl overflow-hidden">
+      <div className="relative flex flex-col w-full max-w-2xl h-[570px] bg-bg-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl shadow-2xl overflow-hidden">
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border-light dark:border-border-dark">
@@ -164,140 +178,150 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           <div className="flex-1 p-6 overflow-y-auto bg-bg-light dark:bg-bg-dark">
             {activeTab === 'connections' && (
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider mb-2">API 認証情報</h3>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider mb-2">プロバイダーの接続管理</h3>
                 
-                {/* Gemini Key */}
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">Google Gemini API キー (CORS不要)</label>
-                  <div className="relative">
-                    <input
-                      type={showGemini ? 'text' : 'password'}
-                      value={store.geminiKey}
-                      onChange={(e) => store.updateSetting('geminiKey', e.target.value)}
-                      placeholder="AIzaSy..."
-                      className="w-full px-3 py-2 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100"
-                    />
-                    <button 
-                      type="button"
-                      onClick={() => setShowGemini(!showGemini)}
-                      className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
-                    >
-                      {showGemini ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
+                {/* Selector Dropdown */}
+                <div className="space-y-1 bg-card-light/45 dark:bg-sidebar-dark/40 p-3 rounded-lg border border-border-light dark:border-border-dark">
+                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">プロバイダーを選択してください</label>
+                  <select
+                    value={selectedProviderId}
+                    onChange={(e) => {
+                      setSelectedProviderId(e.target.value);
+                      setFetchError(null);
+                      setFetchSuccess(false);
+                    }}
+                    className="w-full px-3 py-2 text-sm bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100 font-medium"
+                  >
+                    {Object.values(store.providers).map((prov) => (
+                      <option key={prov.id} value={prov.id}>
+                        {prov.name} {prov.enabled ? '(有効)' : '(無効)'}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                {/* OpenAI Key */}
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">OpenAI API キー (CORS回避推奨)</label>
-                  <div className="relative">
-                    <input
-                      type={showOpenAI ? 'text' : 'password'}
-                      value={store.openaiKey}
-                      onChange={(e) => store.updateSetting('openaiKey', e.target.value)}
-                      placeholder="sk-..."
-                      className="w-full px-3 py-2 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowOpenAI(!showOpenAI)}
-                      className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
-                    >
-                      {showOpenAI ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Claude Key */}
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">Anthropic Claude API キー (CORS回避推奨)</label>
-                  <div className="relative">
-                    <input
-                      type={showClaude ? 'text' : 'password'}
-                      value={store.claudeKey}
-                      onChange={(e) => store.updateSetting('claudeKey', e.target.value)}
-                      placeholder="sk-ant-..."
-                      className="w-full px-3 py-2 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowClaude(!showClaude)}
-                      className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
-                    >
-                      {showClaude ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* CORS Proxy URL */}
-                <div className="space-y-1 border-t border-border-light dark:border-border-dark pt-3 mt-3">
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center">
-                    <span>CORS プロキシ URL</span>
-                    <span className="ml-1 text-[10px] text-gray-400 font-normal">(OpenAI/ClaudeのCORS回避に必要)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={store.corsProxy}
-                    onChange={(e) => store.updateSetting('corsProxy', e.target.value)}
-                    placeholder="https://cors-anywhere.herokuapp.com/ または独自のCloudflare Worker URL"
-                    className="w-full px-3 py-2 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100"
-                  />
-                  <p className="text-[10px] text-gray-400 leading-tight">
-                    ※ OpenAI / Claude をブラウザから直接叩く際はCORS制限がかかります。
-                    Cloudflare Workers等に立てたリバースプロキシのアドレスを入力するか、一時的な開発用CORS回避拡張機能をお使いください（GeminiおよびローカルOllamaは設定不要です）。
-                  </p>
-                </div>
-
-                {/* Custom Base URL & Key & Custom Models */}
-                <div className="space-y-3 border-t border-border-light dark:border-border-dark pt-3">
-                  <h4 className="text-xs font-semibold text-gray-900 dark:text-gray-100">カスタム / ローカルプロバイダー設定 (Ollama, LM Studioなど)</h4>
+                {/* Selected Provider Form Fields */}
+                <div className="space-y-3 pt-2">
                   
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <label className="block text-[11px] text-gray-600 dark:text-gray-400">ベースURL (Base URL)</label>
+                  {/* Enable Switch */}
+                  <div className="flex items-center justify-between border-b border-border-light dark:border-border-dark pb-2">
+                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      このプロバイダーをチャットで有効にする
+                    </span>
+                    <label className="relative inline-flex items-center cursor-pointer">
                       <input
-                        type="text"
-                        value={store.customEndpoint}
-                        onChange={(e) => store.updateSetting('customEndpoint', e.target.value)}
-                        placeholder="http://localhost:11434 (空欄時はローカルOllama)"
-                        className="w-full px-2.5 py-1.5 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100"
+                        type="checkbox"
+                        checked={activeProvider.enabled}
+                        onChange={(e) => handleProviderConfigChange('enabled', e.target.checked)}
+                        className="sr-only peer"
                       />
-                    </div>
+                      <div className="w-9 h-5 bg-gray-200 dark:bg-card-dark peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-accent-blue"></div>
+                    </label>
+                  </div>
 
+                  {/* API Key (Optional for Ollama, required for others) */}
+                  {selectedProviderId !== 'ollama' && (
                     <div className="space-y-1">
-                      <label className="block text-[11px] text-gray-600 dark:text-gray-400">API キー (必要な場合)</label>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                        {activeProvider.name === 'Custom Provider' ? 'API キー (必要な場合)' : 'API キー'}
+                      </label>
                       <div className="relative">
                         <input
-                          type={showCustom ? 'text' : 'password'}
-                          value={store.customKey}
-                          onChange={(e) => store.updateSetting('customKey', e.target.value)}
-                          placeholder="APIキーがあれば入力"
-                          className="w-full px-2.5 py-1.5 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100"
+                          type={showKey ? 'text' : 'password'}
+                          value={activeProvider.apiKey}
+                          onChange={(e) => handleProviderConfigChange('apiKey', e.target.value)}
+                          placeholder={`${activeProvider.id === 'gemini' ? 'AIzaSy...' : activeProvider.id === 'openai' ? 'sk-...' : 'APIキーを入力'}`}
+                          className="w-full px-3 py-2 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100"
                         />
-                        <button
+                        <button 
                           type="button"
-                          onClick={() => setShowCustom(!showCustom)}
-                          className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
+                          onClick={() => setShowKey(!showKey)}
+                          className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
                         >
-                          {showCustom ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </div>
                     </div>
-                  </div>
+                  )}
 
+                  {/* Base URL (Optional/Editable) */}
                   <div className="space-y-1">
-                    <label className="block text-[11px] text-gray-600 dark:text-gray-400">カスタムモデル名リスト (カンマ区切り)</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      ベース URL
+                    </label>
                     <input
                       type="text"
-                      value={customModelText}
-                      onChange={(e) => setCustomModelText(e.target.value)}
-                      onBlur={handleCustomModelsBlur}
-                      placeholder="llama3, gemma2, phi3, deepseek-coder"
-                      className="w-full px-2.5 py-1.5 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100"
+                      value={activeProvider.baseUrl}
+                      onChange={(e) => handleProviderConfigChange('baseUrl', e.target.value)}
+                      placeholder="https://api.example.com"
+                      className="w-full px-3 py-2 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100"
                     />
                   </div>
-                </div>
 
+                  {/* CORS Proxy URL */}
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      CORS プロキシ URL (このプロバイダー専用)
+                    </label>
+                    <input
+                      type="text"
+                      value={activeProvider.corsProxy}
+                      onChange={(e) => handleProviderConfigChange('corsProxy', e.target.value)}
+                      placeholder="プロバイダー固有のCORS回避プロキシがある場合に入力"
+                      className="w-full px-3 py-2 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100"
+                    />
+                  </div>
+
+                  {/* Model Management Section */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                        モデルリスト (カンマ区切り)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleFetchModels}
+                        disabled={isFetchingModels}
+                        className={`text-xs px-2.5 py-1 font-semibold rounded-md border text-white transition-colors cursor-pointer ${
+                          isFetchingModels 
+                            ? 'bg-gray-400 border-gray-400 dark:bg-gray-700 dark:border-gray-700 cursor-not-allowed'
+                            : 'bg-accent-blue hover:bg-accent-blue/90 border-accent-blue'
+                        }`}
+                      >
+                        {isFetchingModels ? '取得中...' : 'モデルリストを取得'}
+                      </button>
+                    </div>
+                    
+                    <textarea
+                      rows={3}
+                      value={activeProvider.models.join(', ')}
+                      onChange={(e) => {
+                        const list = e.target.value
+                          .split(',')
+                          .map((m) => m.trim())
+                          .filter((m) => m.length > 0);
+                        handleProviderConfigChange('models', list);
+                      }}
+                      placeholder="モデル名がありません。取得ボタンを押すか、直接入力してください。"
+                      className="w-full px-3 py-2 text-xs bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100 font-mono resize-none"
+                    />
+                    
+                    {/* Fetch feedback */}
+                    {fetchSuccess && (
+                      <div className="flex items-center text-xs text-accent-green space-x-1 mt-1 font-sans">
+                        <Check className="w-3.5 h-3.5" />
+                        <span>モデルリストを取得し、保存しました！</span>
+                      </div>
+                    )}
+                    {fetchError && (
+                      <div className="flex items-start text-[11px] text-red-500 space-x-1 mt-1 font-sans leading-tight bg-red-500/10 border border-red-500/20 p-2 rounded-md">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>{fetchError}</span>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
               </div>
             )}
 

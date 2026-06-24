@@ -8,16 +8,6 @@ import {
   Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Sparkles, Check, User
 } from 'lucide-react';
 
-// List of standard predefined models
-const PREDEFINED_MODELS = [
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Google)', group: 'Google' },
-  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Google)', group: 'Google' },
-  { id: 'gpt-4o-mini', name: 'GPT-4o Mini (OpenAI)', group: 'OpenAI' },
-  { id: 'gpt-4o', name: 'GPT-4o (OpenAI)', group: 'OpenAI' },
-  { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet (Anthropic)', group: 'Anthropic' },
-  { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku (Anthropic)', group: 'Anthropic' },
-];
-
 export const ChatArea: React.FC = () => {
   const store = useChatStore();
   const [inputText, setInputText] = useState('');
@@ -58,17 +48,18 @@ export const ChatArea: React.FC = () => {
     }
   }, [inputText]);
 
-  // List all available models: predefined + custom models from settings
+  // List all available models dynamically from all enabled providers
   const getAvailableModels = () => {
-    const models = [...PREDEFINED_MODELS];
+    const models: Array<{ id: string; name: string; group: string }> = [];
     
-    // Add custom models
-    store.customModels.forEach((mId) => {
-      if (!models.some(m => m.id === mId)) {
-        models.push({
-          id: mId,
-          name: `${mId} (カスタム/ローカル)`,
-          group: store.customEndpoint ? 'Custom API' : 'Local Ollama',
+    Object.values(store.providers).forEach((prov) => {
+      if (prov.enabled) {
+        prov.models.forEach((mId) => {
+          models.push({
+            id: mId,
+            name: mId,
+            group: prov.name,
+          });
         });
       }
     });
@@ -193,15 +184,16 @@ export const ChatArea: React.FC = () => {
 
           {showModelDropdown && (
             <div className="absolute left-0 mt-1.5 w-72 bg-bg-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl shadow-xl z-50 py-1 max-h-[350px] overflow-y-auto">
-              {/* Group models */}
-              {['Google', 'OpenAI', 'Anthropic', 'Custom API', 'Local Ollama'].map((group) => {
-                const groupModels = allModels.filter(m => m.group === group);
+              {/* Group models by active providers */}
+              {Object.values(store.providers).map((prov) => {
+                if (!prov.enabled) return null;
+                const groupModels = allModels.filter((m) => m.group === prov.name);
                 if (groupModels.length === 0) return null;
                 
                 return (
-                  <div key={group} className="py-1">
+                  <div key={prov.id} className="py-1">
                     <div className="px-3 py-1 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                      {group}
+                      {prov.name}
                     </div>
                     {groupModels.map((model) => (
                       <button

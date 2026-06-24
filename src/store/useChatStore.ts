@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db, type Chat, type Message, type Attachment } from '../services/db';
+import { db, type Chat, type Message, type Attachment, type ProviderConfig } from '../services/db';
 import { streamChatCompletion } from '../services/api';
 
 interface ChatState {
@@ -10,13 +10,7 @@ interface ChatState {
   activeModelId: string;
   
   // Settings State
-  geminiKey: string;
-  openaiKey: string;
-  claudeKey: string;
-  customEndpoint: string;
-  customKey: string;
-  customModels: string[];
-  corsProxy: string;
+  providers: Record<string, ProviderConfig>;
   globalSystemPrompt: string;
   theme: 'light' | 'dark' | 'system';
   
@@ -29,6 +23,8 @@ interface ChatState {
   // Actions
   init: () => Promise<void>;
   updateSetting: (key: string, value: any) => Promise<void>;
+  updateProvider: (providerId: string, config: Partial<ProviderConfig>) => Promise<void>;
+  fetchModelsForProvider: (providerId: string) => Promise<void>;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   setActiveModelId: (modelId: string) => void;
   
@@ -48,15 +44,65 @@ interface ChatState {
   setSettingsOpen: (open: boolean) => void;
 }
 
-// Helpers for settings DB mapping
+const DEFAULT_PROVIDERS: Record<string, ProviderConfig> = {
+  gemini: {
+    id: 'gemini',
+    name: 'Gemini',
+    enabled: true,
+    baseUrl: 'https://generativelanguage.googleapis.com',
+    apiKey: '',
+    models: ['gemini-1.5-flash', 'gemini-1.5-pro'],
+    corsProxy: '',
+  },
+  openai: {
+    id: 'openai',
+    name: 'OpenAI (ChatGPT)',
+    enabled: false,
+    baseUrl: 'https://api.openai.com',
+    apiKey: '',
+    models: ['gpt-4o-mini', 'gpt-4o'],
+    corsProxy: '',
+  },
+  claude: {
+    id: 'claude',
+    name: 'Claude (Anthropic)',
+    enabled: false,
+    baseUrl: 'https://api.anthropic.com',
+    apiKey: '',
+    models: ['claude-3-5-sonnet-20240620', 'claude-3-5-haiku-20241022'],
+    corsProxy: '',
+  },
+  deepseek: {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    enabled: false,
+    baseUrl: 'https://api.deepseek.com',
+    apiKey: '',
+    models: ['deepseek-chat', 'deepseek-coder'],
+    corsProxy: '',
+  },
+  ollama: {
+    id: 'ollama',
+    name: 'Ollama (Local)',
+    enabled: true,
+    baseUrl: 'http://localhost:11434',
+    apiKey: '',
+    models: ['llama3', 'gemma2', 'phi3'],
+    corsProxy: '',
+  },
+  custom: {
+    id: 'custom',
+    name: 'Custom Provider',
+    enabled: false,
+    baseUrl: '',
+    apiKey: '',
+    models: [],
+    corsProxy: '',
+  },
+};
+
 const DEFAULT_SETTINGS: Record<string, any> = {
-  geminiKey: '',
-  openaiKey: '',
-  claudeKey: '',
-  customEndpoint: '',
-  customKey: '',
-  customModels: ['llama3', 'gemma2', 'phi3'],
-  corsProxy: '',
+  providers: DEFAULT_PROVIDERS,
   globalSystemPrompt: 'You are a helpful assistant.',
   theme: 'dark',
   activeModelId: 'gemini-1.5-flash',
@@ -69,13 +115,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activeChatId: null,
   activeModelId: 'gemini-1.5-flash',
   
-  geminiKey: '',
-  openaiKey: '',
-  claudeKey: '',
-  customEndpoint: '',
-  customKey: '',
-  customModels: ['llama3', 'gemma2', 'phi3'],
-  corsProxy: '',
+  providers: DEFAULT_PROVIDERS,
   globalSystemPrompt: 'You are a helpful assistant.',
   theme: 'dark',
   
@@ -99,15 +139,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const theme = getSetting('theme');
     const activeModelId = getSetting('activeModelId');
     const sidebarOpenVal = getSetting('sidebarOpen');
+    
+    // Support migrating old store setups that might not have unified providers
+    let loadedProviders = getSetting('providers');
+    if (!loadedProviders || typeof loadedProviders !== 'object') {
+      loadedProviders = DEFAULT_PROVIDERS;
+    } else {
+      // Merge with default config to ensure missing keys (like deepseek or custom) are populated if needed
+      Object.keys(DEFAULT_PROVIDERS).forEach((key) => {
+        if (!loadedProviders[key]) {
+          loadedProviders[key] = DEFAULT_PROVIDERS[key];
+        }
+      });
+    }
 
     set({
-      geminiKey: getSetting('geminiKey'),
-      openaiKey: getSetting('openaiKey'),
-      claudeKey: getSetting('claudeKey'),
-      customEndpoint: getSetting('customEndpoint'),
-      customKey: getSetting('customKey'),
-      customModels: getSetting('customModels'),
-      corsProxy: getSetting('corsProxy'),
+      providers: loadedProviders,
       globalSystemPrompt: getSetting('globalSystemPrompt'),
       theme,
       activeModelId,
@@ -128,6 +175,93 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (key === 'theme') {
       get().setTheme(value);
     }
+  },
+
+  updateProvider: async (providerId, config) => {
+    const currentProviders = { ...get().providers };
+    if (!currentProviders[providerId]) return;
+
+    currentProviders[providerId] = {
+      ...currentProviders[providerId],
+      ...config,
+    };
+
+    set({ providers: currentProviders });
+    await db.settings.put({ key: 'providers', value: currentProviders });
+  },
+
+  fetchModelsForProvider: async (providerId: string) => {
+    const prov = get().providers[providerId];
+    if (!prov) return;
+
+    let url = '';
+    let headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    const corsPrefix = prov.corsProxy ? `${prov.corsProxy.replace(/\/$/, '')}/` : '';
+
+    if (providerId === 'gemini') {
+      if (!prov.apiKey) throw new Error('APIキーが入力されていません。');
+      url = `${corsPrefix}https://generativelanguage.googleapis.com/v1beta/models?key=${prov.apiKey}`;
+    } else if (providerId === 'ollama') {
+      url = `${corsPrefix}${prov.baseUrl.replace(/\/$/, '')}/api/tags`;
+    } else if (providerId === 'claude') {
+      if (!prov.apiKey) throw new Error('APIキーが入力されていません。');
+      url = `${corsPrefix}https://api.anthropic.com/v1/models`;
+      headers['x-api-key'] = prov.apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+    } else {
+      // openai, deepseek, custom
+      if (!prov.baseUrl) throw new Error('ベースURLが入力されていません。');
+      const base = prov.baseUrl.replace(/\/$/, '');
+      const path = base.includes('/v1') ? '/models' : '/v1/models';
+      url = `${corsPrefix}${base}${path}`;
+      if (prov.apiKey) {
+        headers['Authorization'] = `Bearer ${prov.apiKey}`;
+      }
+    }
+
+    const res = await fetch(url, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      let text = '';
+      try { text = await res.text(); } catch(_) {}
+      throw new Error(`モデル一覧の取得に失敗しました (${res.status}): ${text || res.statusText}`);
+    }
+
+    const data = await res.json();
+    let fetchedModels: string[] = [];
+
+    if (providerId === 'gemini') {
+      if (data.models && Array.isArray(data.models)) {
+        fetchedModels = data.models
+          .map((m: any) => m.name.replace(/^models\//, ''))
+          .filter((name: string) => name.startsWith('gemini-'));
+      }
+    } else if (providerId === 'ollama') {
+      if (data.models && Array.isArray(data.models)) {
+        fetchedModels = data.models.map((m: any) => m.name);
+      }
+    } else if (providerId === 'claude') {
+      if (data.data && Array.isArray(data.data)) {
+        fetchedModels = data.data.map((m: any) => m.id);
+      }
+    } else {
+      // openai, deepseek, custom
+      if (data.data && Array.isArray(data.data)) {
+        fetchedModels = data.data.map((m: any) => m.id);
+      }
+    }
+
+    if (fetchedModels.length === 0) {
+      throw new Error('返されたモデルリストが空です。形式が合わないか、モデルがありません。');
+    }
+
+    await get().updateProvider(providerId, { models: fetchedModels });
   },
 
   setTheme: (theme) => {
@@ -226,7 +360,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     await db.messages.add(userMsg);
     
-    // Update local chat title if it's the first message
     const activeChat = get().chats.find(c => c.id === chatId);
     if (activeChat && activeChat.title === 'New Chat') {
       const rawTitle = content.trim().slice(0, 30);
@@ -237,7 +370,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await db.chats.update(chatId, { updatedAt: Date.now() });
     await get().loadChats();
 
-    // Refresh messages array from db
     const messagesSoFar = await db.messages.where('chatId').equals(chatId).sortBy('timestamp');
     set({ messages: messagesSoFar });
 
@@ -249,69 +381,76 @@ export const useChatStore = create<ChatState>((set, get) => ({
       role: 'assistant',
       content: '',
       modelUsed: activeChat?.modelId || get().activeModelId,
-      timestamp: Date.now() + 1, // Ensure it's after user message
+      timestamp: Date.now() + 1,
     };
 
     await db.messages.add(assistantMsg);
     
-    // Add to UI state immediately
     set({ 
       messages: [...messagesSoFar, assistantMsg],
       isGenerating: true 
     });
 
-    // 3. Initiate API Call
+    // 3. Find target provider config
+    const activeModelId = assistantMsg.modelUsed || get().activeModelId;
+    let providerConfig: ProviderConfig | undefined;
+
+    // Search active model among enabled providers first
+    for (const prov of Object.values(get().providers)) {
+      if (prov.enabled && prov.models.includes(activeModelId)) {
+        providerConfig = prov;
+        break;
+      }
+    }
+
+    // Fallback: search in disabled ones
+    if (!providerConfig) {
+      for (const prov of Object.values(get().providers)) {
+        if (prov.models.includes(activeModelId)) {
+          providerConfig = prov;
+          break;
+        }
+      }
+    }
+
+    // Final fallback
+    if (!providerConfig) {
+      providerConfig = get().providers.custom;
+    }
+
     const controller = new AbortController();
     set({ abortController: controller });
 
     try {
-      const keys = {
-        gemini: get().geminiKey,
-        openai: get().openaiKey,
-        claude: get().claudeKey,
-        custom: get().customKey,
-      };
-
-      const customEndpoint = get().customEndpoint;
-      const corsProxy = get().corsProxy;
       const systemPrompt = activeChat?.systemPrompt || get().globalSystemPrompt;
       const temperature = activeChat?.temperature ?? 0.7;
 
-      // Extract system instructions and construct conversation context
-      const chatContext = messagesSoFar.map(m => {
-        // Handle image attachment formatting for APIs if applicable
-        return {
-          role: m.role,
-          content: m.content,
-          attachments: m.attachments,
-        };
-      });
+      const chatContext = messagesSoFar.map(m => ({
+        role: m.role,
+        content: m.content,
+        attachments: m.attachments,
+      }));
 
       let accumulatedText = '';
       
       await streamChatCompletion(
         {
-          modelId: assistantMsg.modelUsed || get().activeModelId,
+          providerConfig,
+          modelId: activeModelId,
           messages: chatContext,
           newMessage: { content, attachments },
           systemPrompt,
           temperature,
-          keys,
-          customEndpoint,
-          corsProxy,
-          customModels: get().customModels,
         },
         async (chunk) => {
           accumulatedText += chunk;
           
-          // Update Zustand UI state reactively
           set((state) => ({
             messages: state.messages.map((m) =>
               m.id === assistantMsgId ? { ...m, content: accumulatedText } : m
             ),
           }));
 
-          // Debounced or direct update to IndexedDB to avoid excessive writes
           await db.messages.update(assistantMsgId, { content: accumulatedText });
         },
         controller.signal
@@ -343,13 +482,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const chatId = get().activeChatId;
     if (!chatId || messageIndex < 0 || messageIndex >= get().messages.length) return;
 
-    // Stop current generation if any
     get().stopGeneration();
 
     const messages = [...get().messages];
-    
-    // We expect the target to be an assistant message, and we truncate everything from this index onwards
-    // Find the last user message before this index
     let lastUserIndex = -1;
     for (let i = messageIndex - 1; i >= 0; i--) {
       if (messages[i].role === 'user') {
@@ -360,18 +495,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     if (lastUserIndex === -1) return;
 
-    // Delete messages from index onwards in DB
     const idsToDelete = messages.slice(lastUserIndex + 1).map(m => m.id);
     await db.messages.bulkDelete(idsToDelete);
 
-    // Grab user content
     const userMsg = messages[lastUserIndex];
 
-    // Reset messages in state to only include everything up to userMsg
     const truncatedMessages = messages.slice(0, lastUserIndex + 1);
     set({ messages: truncatedMessages });
 
-    // Call sendMessage with user content
     await get().sendMessage(userMsg.content, userMsg.attachments);
   },
 

@@ -32,6 +32,16 @@ export interface Setting {
   value: any;
 }
 
+export interface ProviderConfig {
+  id: string; // 'gemini' | 'openai' | 'claude' | 'deepseek' | 'ollama' | 'custom'
+  name: string;
+  enabled: boolean;
+  baseUrl: string;
+  apiKey: string;
+  models: string[];
+  corsProxy: string;
+}
+
 class MinaseDatabase extends Dexie {
   chats!: Table<Chat, string>;
   messages!: Table<Message, string>;
