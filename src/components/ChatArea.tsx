@@ -6,7 +6,8 @@ import { extractTextFromPdf, readFileAsText, readFileAsBase64 } from '../utils/f
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
-  Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Sparkles, Check, User, Search
+  Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Check, User, Search, Code, Pencil, AlignLeft, Compass,
+  ChevronLeft, ChevronRight, Columns, Scale, GitFork
 } from 'lucide-react';
 
 export const ChatArea: React.FC = () => {
@@ -16,13 +17,25 @@ export const ChatArea: React.FC = () => {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [showEffortDropdown, setShowEffortDropdown] = useState(false);
+  
+  // States for variant comparison and action dropdowns
+  const [compareStates, setCompareStates] = useState<Record<string, boolean>>({});
+  const [compareDropdownOpen, setCompareDropdownOpen] = useState<string | null>(null);
+  const [thinkingOpen, setThinkingOpen] = useState<Record<string, boolean>>({});
   
   // Model search state
   const [modelSearchQuery, setModelSearchQuery] = useState('');
 
+  // Fix #13: inline custom effort input (replaces browser prompt())
+  const [customEffortVisible, setCustomEffortVisible] = useState(false);
+  const [customEffortValue, setCustomEffortValue] = useState('');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const effortDropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownCompareRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto scroll to bottom
@@ -34,11 +47,17 @@ export const ChatArea: React.FC = () => {
     scrollToBottom();
   }, [store.messages]);
 
-  // Handle outside click for model dropdown
+  // Handle outside click for model and effort dropdowns
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setShowModelDropdown(false);
+      }
+      if (effortDropdownRef.current && !effortDropdownRef.current.contains(e.target as Node)) {
+        setShowEffortDropdown(false);
+      }
+      if (dropdownCompareRef.current && !dropdownCompareRef.current.contains(e.target as Node)) {
+        setCompareDropdownOpen(null);
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
@@ -88,8 +107,41 @@ export const ChatArea: React.FC = () => {
     group: 'Unknown',
   };
 
+  const getEffortOptions = () => {
+    const grp = activeModel.group.toLowerCase();
+    let baseOptions = [];
+    if (grp.includes('gemini') || grp.includes('google')) {
+      baseOptions = [
+        { value: 'minimal', label: 'Minimal' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+        { value: 'none', label: t.effortNone }
+      ];
+    } else if (grp.includes('claude') || grp.includes('anthropic')) {
+      baseOptions = [
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+        { value: 'xhigh', label: 'xHigh' },
+        { value: 'max', label: 'Max' },
+        { value: 'none', label: t.effortNone }
+      ];
+    } else {
+      baseOptions = [
+        { value: 'minimal', label: 'Minimal' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+        { value: 'xhigh', label: 'xHigh' },
+        { value: 'none', label: t.effortNone }
+      ];
+    }
+    return [...baseOptions, { value: 'custom_input', label: t.effortCustom }];
+  };
+
   const handleModelSelect = async (modelId: string) => {
-    store.setActiveModelId(modelId);
+    await store.setActiveModelId(modelId);  // Fix #8: await the async setter
     
     if (store.activeChatId) {
       await db.chats.update(store.activeChatId, { modelId });
@@ -177,76 +229,169 @@ export const ChatArea: React.FC = () => {
     }
   };
 
+  const getProviderColor = (group: string) => {
+    const grp = group.toLowerCase();
+    if (grp.includes('gemini') || grp.includes('google')) return 'bg-blue-500 shadow-blue-500/50';
+    if (grp.includes('openai') || grp.includes('chatgpt')) return 'bg-emerald-500 shadow-emerald-500/50';
+    if (grp.includes('claude') || grp.includes('anthropic')) return 'bg-amber-600 shadow-amber-600/50';
+    if (grp.includes('deepseek')) return 'bg-cyan-500 shadow-cyan-500/50';
+    if (grp.includes('ollama')) return 'bg-purple-500 shadow-purple-500/50';
+    return 'bg-amber-500 shadow-amber-500/50';
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full bg-bg-light dark:bg-bg-dark text-gray-800 dark:text-gray-100 relative overflow-hidden">
       
       {/* Top Header Bar */}
-      <div className="flex items-center justify-between border-b border-border-light dark:border-border-dark px-4 py-3 h-[57px] select-none shrink-0 pl-16 md:pl-4">
+      <div className="flex items-center justify-between border-b border-border-light/80 dark:border-border-dark px-6 py-3 h-[57px] select-none shrink-0 pl-20 md:pl-6 bg-bg-light/80 dark:bg-bg-dark/80 backdrop-blur-md z-30">
         
-        {/* Model Dropdown */}
-        <div className="relative" ref={dropdownRef}>
-          <button
-            onClick={() => {
-              setShowModelDropdown(!showModelDropdown);
-              setModelSearchQuery('');
-            }}
-            className="flex items-center space-x-1.5 px-3 py-1.5 hover:bg-border-light/40 dark:hover:bg-border-dark/40 rounded-lg text-sm font-semibold transition-colors cursor-pointer"
-          >
-            <span>{activeModel.name}</span>
-            <ChevronDown className="w-4 h-4 text-gray-400" />
-          </button>
+        <div className="flex items-center space-x-3">
+          {/* Model Dropdown */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => {
+                setShowModelDropdown(!showModelDropdown);
+                setModelSearchQuery('');
+              }}
+              className="flex items-center space-x-2 px-3.5 py-2 hover:bg-card-light dark:hover:bg-card-dark text-gray-800 dark:text-gray-200 border border-border-light/60 dark:border-border-dark/40 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+            >
+              <span className={`w-2 h-2 rounded-full shadow-sm animate-pulse ${getProviderColor(activeModel.group)}`} />
+              <span className="font-heading">{activeModel.name}</span>
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            </button>
 
-          {showModelDropdown && (
-            <div className="absolute left-0 mt-1.5 w-72 bg-bg-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl shadow-xl z-50 py-1 max-h-[350px] overflow-y-auto">
-              
-              {/* Search bar inside model selector dropdown */}
-              <div className="p-2 border-b border-border-light dark:border-border-dark relative">
-                <input
-                  type="text"
-                  placeholder={t.searchModels}
-                  value={modelSearchQuery}
-                  onChange={(e) => setModelSearchQuery(e.target.value)}
-                  className="w-full pl-7 pr-3 py-1 bg-card-light dark:bg-sidebar-dark text-xs border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue"
-                  autoFocus
-                />
-                <Search className="absolute left-3.5 top-[13px] w-3 h-3 text-gray-400" />
-              </div>
+            {showModelDropdown && (
+              <div className="absolute left-0 mt-2 w-76 bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-2xl shadow-2xl z-50 p-2 max-h-[350px] overflow-y-auto animate-scale-up">
+                
+                {/* Search bar inside model selector dropdown */}
+                <div className="p-1.5 border-b border-border-light/50 dark:border-border-dark/50 relative mb-1 shrink-0">
+                  <input
+                    type="text"
+                    placeholder={t.searchModels}
+                    value={modelSearchQuery}
+                    onChange={(e) => setModelSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 bg-bg-light dark:bg-bg-dark/80 text-xs border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                    autoFocus
+                  />
+                  <Search className="absolute left-4 top-[15px] w-3.5 h-3.5 text-gray-400" />
+                </div>
 
-              {/* Group models by active providers */}
-              {Object.values(store.providers).map((prov) => {
-                if (!prov.enabled) return null;
-                
-                // Filter group models by query
-                const groupModels = filteredModels.filter((m) => m.group === prov.name);
-                if (groupModels.length === 0) return null;
-                
-                return (
-                  <div key={prov.id} className="py-1">
-                    <div className="px-3 py-1 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider bg-card-light/20 dark:bg-sidebar-dark/20">
-                      {prov.name}
+                {/* Group models by active providers */}
+                {Object.values(store.providers).map((prov) => {
+                  if (!prov.enabled) return null;
+                  
+                  // Filter group models by query
+                  const groupModels = filteredModels.filter((m) => m.group === prov.name);
+                  if (groupModels.length === 0) return null;
+                  
+                  return (
+                    <div key={prov.id} className="py-1">
+                      <div className="px-3 py-1.5 text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest bg-card-light/20 dark:bg-sidebar-dark/20 rounded-md">
+                        {prov.name}
+                      </div>
+                      <div className="mt-1 space-y-0.5">
+                        {groupModels.map((model) => (
+                          <button
+                            key={model.id}
+                            onClick={() => handleModelSelect(model.id)}
+                            className={`w-full text-left px-3.5 py-2.5 rounded-lg text-xs hover:bg-amber-500/5 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 flex items-center justify-between transition-colors cursor-pointer ${
+                              store.activeModelId === model.id ? 'text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/5 dark:bg-amber-500/10' : 'text-gray-700 dark:text-gray-300'
+                            }`}
+                          >
+                            <span className="truncate pr-4 font-medium">{model.name}</span>
+                            {store.activeModelId === model.id && <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    {groupModels.map((model) => (
-                      <button
-                        key={model.id}
-                        onClick={() => handleModelSelect(model.id)}
-                        className={`w-full text-left px-4 py-2 text-xs hover:bg-border-light/30 dark:hover:bg-border-dark/30 flex items-center justify-between cursor-pointer ${
-                          store.activeModelId === model.id ? 'text-accent-blue font-semibold bg-accent-blue/5' : ''
-                        }`}
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Effort Selector */}
+          <div className="relative" ref={effortDropdownRef}>
+            <button
+              onClick={() => {
+                setShowEffortDropdown(!showEffortDropdown);
+                setCustomEffortVisible(false);
+                setCustomEffortValue('');
+              }}
+              className="flex items-center space-x-2 px-3.5 py-2 hover:bg-card-light dark:hover:bg-card-dark text-gray-800 dark:text-gray-200 border border-border-light/60 dark:border-border-dark/40 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+            >
+              <span className="font-heading">
+                {t.effortLabel}: {getEffortOptions().find(o => o.value === store.activeEffort)?.label || store.activeEffort}
+              </span>
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            </button>
+            
+            {showEffortDropdown && (
+              <div className="absolute left-0 mt-2 w-52 bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-2xl shadow-2xl z-50 p-1.5 animate-scale-up max-h-[320px] overflow-y-auto">
+                {getEffortOptions().map((opt) =>
+                  opt.value === 'custom_input' ? (
+                    customEffortVisible ? (
+                      /* Fix #13: inline input instead of browser prompt() */
+                      <form
+                        key="custom_form"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          store.setActiveEffort(customEffortValue.trim() || 'none');
+                          setCustomEffortVisible(false);
+                          setCustomEffortValue('');
+                          setShowEffortDropdown(false);
+                        }}
+                        className="p-1.5 flex space-x-1"
                       >
-                        <span className="truncate pr-4">{model.name}</span>
-                        {store.activeModelId === model.id && <Check className="w-3.5 h-3.5" />}
+                        <input
+                          type="text"
+                          value={customEffortValue}
+                          onChange={(e) => setCustomEffortValue(e.target.value)}
+                          placeholder="例: low, 1024…"
+                          className="flex-1 px-2 py-1 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                          autoFocus
+                        />
+                        <button
+                          type="submit"
+                          className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold cursor-pointer transition-colors"
+                        >
+                          OK
+                        </button>
+                      </form>
+                    ) : (
+                      <button
+                        key={opt.value}
+                        onClick={() => setCustomEffortVisible(true)}
+                        className="w-full text-left px-3.5 py-2 rounded-lg text-xs hover:bg-amber-500/5 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 flex items-center justify-between transition-colors cursor-pointer text-gray-700 dark:text-gray-300"
+                      >
+                        <span>{opt.label}</span>
                       </button>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                    )
+                  ) : (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        store.setActiveEffort(opt.value);
+                        setShowEffortDropdown(false);
+                      }}
+                      className={`w-full text-left px-3.5 py-2 rounded-lg text-xs hover:bg-amber-500/5 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 flex items-center justify-between transition-colors cursor-pointer ${
+                        store.activeEffort === opt.value ? 'text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/5 dark:bg-amber-500/10' : 'text-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      <span>{opt.label}</span>
+                      {store.activeEffort === opt.value && <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Action icons / details */}
-        <div className="text-xs text-gray-400 dark:text-gray-500 font-mono hidden sm:block">
-          {store.isGenerating ? t.generating : t.idle}
+        <div className="text-[11px] text-gray-400 dark:text-gray-500 font-mono tracking-wider bg-card-light/45 dark:bg-card-dark/45 border border-border-light/40 dark:border-border-dark/40 px-2.5 py-1 rounded-full hidden sm:flex items-center space-x-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full ${store.isGenerating ? 'bg-amber-500 animate-ping' : 'bg-gray-300 dark:bg-gray-600'}`} />
+          <span>{store.isGenerating ? t.generating : t.idle}</span>
         </div>
 
       </div>
@@ -256,121 +401,270 @@ export const ChatArea: React.FC = () => {
         
         {store.messages.length === 0 ? (
           /* Empty state */
-          <div className="flex flex-col items-center justify-center min-h-[70%] max-w-xl mx-auto text-center space-y-8 animate-fade-in py-10">
-            <div className="w-14 h-14 rounded-full bg-accent-blue/10 flex items-center justify-center text-accent-blue animate-pulse">
-              <Sparkles className="w-7 h-7" />
+          <div className="flex flex-col items-center justify-center min-h-[85%] max-w-xl mx-auto text-center space-y-8 animate-fade-in py-10">
+            {/* Elegant Sunflower Sparkle Icon */}
+            <div className="relative w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-500/20 to-yellow-400/20 flex items-center justify-center text-amber-600 dark:text-amber-500 shadow-inner border border-amber-500/20 animate-pulse-slow">
+              <svg viewBox="0 0 24 24" className="w-10 h-10 fill-current animate-spin" style={{ animationDuration: '30s' }} xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2.25a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75ZM12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75ZM5.106 5.106a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06Zm11.668 11.668a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06ZM2.25 12a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5H3a.75.75 0 0 1-.75-.75Zm15.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75ZM5.106 18.894a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Zm11.668-11.668a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Z" />
+              </svg>
+              <div className="absolute w-4 h-4 rounded-full bg-amber-600 border-2 border-yellow-300 shadow-sm" />
             </div>
             
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            <div className="space-y-3">
+              <h2 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-gray-900 via-gray-800 to-amber-600 dark:from-white dark:via-gray-150 dark:to-amber-400 font-heading">
                 {t.howCanIHelp}
               </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">
                 {t.howCanIHelpSub}
               </p>
             </div>
 
             {/* Suggestions Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full pt-4">
               {[
-                { title: t.sugCodeTitle, prompt: t.sugCodePrompt },
-                { title: t.sugMailTitle, prompt: t.sugMailPrompt },
-                { title: t.sugSumTitle, prompt: t.sugSumPrompt },
-                { title: t.sugWebgpuTitle, prompt: t.sugWebgpuPrompt },
+                { title: t.sugCodeTitle, prompt: t.sugCodePrompt, icon: <Code className="w-4.5 h-4.5 text-amber-600 dark:text-amber-500" /> },
+                { title: t.sugMailTitle, prompt: t.sugMailPrompt, icon: <Pencil className="w-4.5 h-4.5 text-amber-600 dark:text-amber-500" /> },
+                { title: t.sugSumTitle, prompt: t.sugSumPrompt, icon: <AlignLeft className="w-4.5 h-4.5 text-amber-600 dark:text-amber-500" /> },
+                { title: t.sugWebgpuTitle, prompt: t.sugWebgpuPrompt, icon: <Compass className="w-4.5 h-4.5 text-amber-600 dark:text-amber-500" /> },
               ].map((card, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleSuggestionClick(card.prompt)}
-                  className="p-4 text-left border border-border-light dark:border-border-dark bg-card-light/40 dark:bg-sidebar-dark/20 hover:bg-border-light/40 dark:hover:bg-border-dark/40 rounded-xl transition-all cursor-pointer group hover:scale-[1.01]"
+                  className="p-4.5 text-left border border-border-light dark:border-border-dark bg-card-light/40 dark:bg-card-dark/20 hover:bg-card-light dark:hover:bg-card-dark/60 rounded-2xl transition-all duration-300 cursor-pointer group hover:scale-[1.015] hover:shadow-md hover:shadow-black/5 dark:hover:shadow-black/20 flex space-x-3 items-start"
                 >
-                  <h4 className="text-xs font-semibold text-gray-900 dark:text-gray-200 mb-1 group-hover:text-accent-blue transition-colors">
-                    {card.title}
-                  </h4>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
-                    {card.prompt}
-                  </p>
+                  <div className="p-2 bg-amber-500/10 dark:bg-amber-500/15 rounded-xl shrink-0 group-hover:bg-amber-500/20 transition-colors">
+                    {card.icon}
+                  </div>
+                  <div className="space-y-1 min-w-0">
+                    <h4 className="text-xs font-bold text-gray-900 dark:text-gray-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                      {card.title}
+                    </h4>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">
+                      {card.prompt}
+                    </p>
+                  </div>
                 </button>
               ))}
             </div>
           </div>
         ) : (
           /* Conversation Flow */
-          <div className="max-w-3xl mx-auto space-y-6">
+          <div className="max-w-3xl mx-auto space-y-8 pb-10">
             {store.messages.map((msg, index) => {
               const isUser = msg.role === 'user';
-              
+              const hasVariants = !isUser && msg.variants && msg.variants.length > 1;
+              const activeIndex = msg.activeVariantIndex ?? 0;
+              const totalVariants = msg.variants ? msg.variants.length : 1;
+              const isCompareMode = !isUser && (compareStates[msg.id] || false);
+
               return (
-                <div key={msg.id} className={`flex space-x-3.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                <div key={msg.id} className={`flex space-x-4 ${isUser ? 'justify-end' : 'justify-start'} animate-slide-up group`}>
                   
                   {/* Left Avatar (Assistant only) */}
                   {!isUser && (
-                    <div className="w-8 h-8 rounded-lg bg-accent-blue/15 border border-accent-blue/20 flex items-center justify-center text-accent-blue font-bold text-xs shrink-0 select-none">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-600 to-yellow-500 flex items-center justify-center text-white font-bold text-xs shrink-0 select-none shadow-md shadow-amber-500/10 border border-amber-400/20">
                       AI
                     </div>
                   )}
 
                   {/* Message Bubble wrapper */}
-                  <div className={`flex flex-col space-y-1.5 max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
+                  <div className={`flex flex-col space-y-1.5 ${isUser ? 'max-w-[85%] items-end' : 'flex-1 max-w-[90%] items-start'}`}>
                     
-                    {/* Role header / model tag */}
-                    <div className="flex items-center space-x-1.5 text-[10px] text-gray-400 font-semibold px-1">
-                      <span>{isUser ? t.themeSystem.replace('同期', '') : msg.modelUsed || 'Assistant'}</span>
-                    </div>
+                    {/* Role header / model tag / Variant switcher */}
+                    <div className="flex items-center space-x-3 text-[10px] text-gray-400/80 font-bold px-1 select-none w-full justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span>{isUser ? t.user : (msg.modelUsed || 'Assistant')}</span>
+                        
+                        {/* Variant Switcher */}
+                        {hasVariants && (
+                          <div className="flex items-center space-x-1 bg-card-light dark:bg-card-dark border border-border-light/50 dark:border-border-dark/50 rounded-lg px-1.5 py-0.5 ml-2 font-mono text-[9px] shadow-sm">
+                            <button
+                              disabled={activeIndex === 0}
+                              onClick={() => store.switchMessageVariant(msg.id, activeIndex - 1)}
+                              className={`p-0.5 rounded hover:bg-bg-light dark:hover:bg-bg-dark transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed`}
+                            >
+                              <ChevronLeft className="w-3 h-3" />
+                            </button>
+                            <span>{activeIndex + 1} / {totalVariants}</span>
+                            <button
+                              disabled={activeIndex === totalVariants - 1}
+                              onClick={() => store.switchMessageVariant(msg.id, activeIndex + 1)}
+                              className={`p-0.5 rounded hover:bg-bg-light dark:hover:bg-bg-dark transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed`}
+                            >
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
 
-                    {/* Content Box */}
-                    <div className={`px-4 py-2.5 rounded-2xl text-[14.5px] leading-relaxed break-words border ${
-                      isUser
-                        ? 'bg-card-light/60 dark:bg-card-dark border-border-light dark:border-border-dark text-gray-900 dark:text-gray-100 rounded-tr-none'
-                        : 'bg-transparent border-transparent text-gray-800 dark:text-gray-100 rounded-tl-none prose prose-slate dark:prose-invert max-w-none'
-                    }`}>
-                      
-                      {/* Attached files previews in message */}
-                      {isUser && msg.attachments && msg.attachments.length > 0 && (
-                        <div className="flex flex-col space-y-1.5 mb-2">
-                          {msg.attachments.map((att, attIdx) => (
-                            <div key={attIdx} className="flex items-center space-x-2 bg-border-light/40 dark:bg-border-dark/40 px-2.5 py-1.5 rounded-lg border border-border-light dark:border-border-dark max-w-sm">
-                              {att.type === 'image' ? (
-                                <img src={att.content} alt={att.name} className="w-8 h-8 rounded object-cover" />
-                              ) : (
-                                <FileText className="w-4 h-4 text-accent-blue" />
-                              )}
-                              <span className="text-[11px] font-medium truncate max-w-[200px]">{att.name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Message Content rendering */}
-                      {isUser ? (
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
-                      ) : (
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          components={{
-                            code({ node, className, children, ...props }) {
-                              const match = /language-(\w+)/.exec(className || '');
-                              const lang = match ? match[1] : '';
-                              const codeVal = String(children).replace(/\n$/, '');
-                              const isInline = !match;
-
-                              return !isInline ? (
-                                <CodeBlock lang={lang} code={codeVal} copyLabel={t.copy} copiedLabel={t.copied} />
-                              ) : (
-                                <code className="bg-card-light dark:bg-card-dark px-1.5 py-0.5 rounded text-xs text-red-500 dark:text-red-400 font-mono break-all" {...props}>
-                                  {children}
-                                </code>
-                              );
-                            }
-                          }}
+                      {/* Side-by-Side Compare Toggle */}
+                      {!isUser && msg.variants && msg.variants.length > 1 && (
+                        <button
+                          onClick={() => setCompareStates({ ...compareStates, [msg.id]: !isCompareMode })}
+                          className={`flex items-center space-x-1 px-2 py-0.5 rounded-lg border transition-all cursor-pointer text-[9px] ${
+                            isCompareMode
+                              ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                              : 'bg-card-light dark:bg-card-dark border-border-light/50 dark:border-border-dark/50 text-gray-450 hover:text-amber-600'
+                          }`}
                         >
-                          {msg.content || '...'}
-                        </ReactMarkdown>
+                          <Columns className="w-3 h-3" />
+                          <span>{isCompareMode ? t.normalView : t.compareView}</span>
+                        </button>
                       )}
                     </div>
+
+                    {/* Content Box (or Compare grid) */}
+                    {isCompareMode && msg.variants ? (
+                      /* Side-by-Side Compare Grid */
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full mt-1.5">
+                        {msg.variants.map((v, vIdx) => (
+                          <div
+                            key={v.id}
+                            className={`p-4 rounded-2xl border bg-card-light/40 dark:bg-card-dark/20 text-gray-800 dark:text-gray-200 transition-all ${
+                              activeIndex === vIdx 
+                                ? 'border-amber-500/40 shadow-sm shadow-amber-500/5 bg-amber-500/[0.01]' 
+                                : 'border-border-light dark:border-border-dark hover:border-gray-300 dark:hover:border-gray-700'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-[9px] text-gray-400 font-bold mb-2 pb-1.5 border-b border-border-light/40 dark:border-border-dark/40 select-none">
+                              <span className="truncate pr-4">{v.modelUsed || 'Model'}</span>
+                              <div className="flex items-center space-x-2 shrink-0">
+                                <span>#{vIdx + 1}</span>
+                                {activeIndex !== vIdx && (
+                                  <button
+                                    onClick={() => store.switchMessageVariant(msg.id, vIdx)}
+                                    className="px-1.5 py-0.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded cursor-pointer transition-colors text-[8px]"
+                                  >
+                                    {t.setActive}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="prose dark:prose-invert max-w-none text-[13.5px] leading-relaxed break-words">
+                              {/* Thinking Accordion for Compare View */}
+                              {v.thinking && (
+                                <div className="w-full mb-3 text-xs select-none">
+                                  <div
+                                    onClick={() => setThinkingOpen({ ...thinkingOpen, [`${msg.id}-${vIdx}`]: !(thinkingOpen[`${msg.id}-${vIdx}`] !== undefined ? thinkingOpen[`${msg.id}-${vIdx}`] : true) })}
+                                    className="flex items-center space-x-2 text-gray-400 hover:text-amber-600 dark:text-gray-500 dark:hover:text-amber-400 cursor-pointer font-bold py-1 border-b border-border-light/30 dark:border-border-dark/30 font-sans"
+                                  >
+                                    <span className={`transition-transform duration-200 text-[8px] ${(thinkingOpen[`${msg.id}-${vIdx}`] !== undefined ? thinkingOpen[`${msg.id}-${vIdx}`] : true) ? 'rotate-90' : ''}`}>▶</span>
+                                    <span>{t.thinkingProcess}</span>
+                                  </div>
+                                  {(thinkingOpen[`${msg.id}-${vIdx}`] !== undefined ? thinkingOpen[`${msg.id}-${vIdx}`] : true) && (
+                                    <div className="mt-2 p-2.5 bg-zinc-50/50 dark:bg-zinc-900/40 text-gray-500 dark:text-gray-400 border border-border-light/40 dark:border-border-dark/40 rounded-xl max-h-40 overflow-y-auto leading-relaxed text-[11px] select-text prose dark:prose-invert prose-sm max-w-none">
+                                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{v.thinking}</ReactMarkdown>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                  code({ node, className, children, ...props }) {
+                                    const match = /language-(\w+)/.exec(className || '');
+                                    const lang = match ? match[1] : '';
+                                    const codeVal = String(children).replace(/\n$/, '');
+                                    const isInline = !match;
+
+                                    return !isInline ? (
+                                      <CodeBlock lang={lang} code={codeVal} copyLabel={t.copy} copiedLabel={t.copied} />
+                                    ) : (
+                                      <code className="bg-card-light dark:bg-card-dark border border-border-light dark:border-border-dark px-1.5 py-0.5 rounded-md text-xs text-amber-700 dark:text-amber-400 font-mono break-all font-semibold" {...props}>
+                                        {children}
+                                      </code>
+                                    );
+                                  }
+                                }}
+                              >
+                                {v.content || '...'}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      /* Standard Content Box */
+                      <div className={`px-4.5 py-3 rounded-2xl text-[14.5px] leading-relaxed break-words border w-full ${
+                        isUser
+                          ? 'bg-card-light/95 dark:bg-card-dark border-border-light dark:border-border-dark text-gray-800 dark:text-gray-200 rounded-tr-none shadow-sm shadow-black/3'
+                          : 'bg-transparent border-transparent text-gray-850 dark:text-gray-100 rounded-tl-none prose dark:prose-invert max-w-none pl-0'
+                      }`}>
+                        
+                        {/* Attached files previews in message */}
+                        {isUser && msg.attachments && msg.attachments.length > 0 && (
+                          <div className="flex flex-col space-y-2 mb-2">
+                            {msg.attachments.map((att, attIdx) => (
+                              <div key={attIdx} className="flex items-center space-x-2.5 bg-bg-light/80 dark:bg-bg-dark/80 px-3 py-2 rounded-xl border border-border-light dark:border-border-dark max-w-sm shadow-sm">
+                                {att.type === 'image' ? (
+                                  <img src={att.content} alt={att.name} className="w-9 h-9 rounded-lg object-cover" />
+                                ) : (
+                                  <FileText className="w-4.5 h-4.5 text-amber-600 dark:text-amber-500 shrink-0" />
+                                )}
+                                <div className="text-left min-w-0">
+                                  <p className="text-[11px] font-semibold truncate max-w-[200px] text-gray-800 dark:text-gray-200">{att.name}</p>
+                                  <p className="text-[9px] text-gray-400">{(att.size / 1024).toFixed(1)} KB</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Thinking Accordion (Assistant only) */}
+                        {!isUser && msg.thinking && (
+                          <div className="w-full mb-4 select-none">
+                            <div
+                              onClick={() => setThinkingOpen({ ...thinkingOpen, [msg.id]: !(thinkingOpen[msg.id] !== undefined ? thinkingOpen[msg.id] : true) })}
+                              className="flex items-center space-x-2 text-gray-400 hover:text-amber-600 dark:text-gray-500 dark:hover:text-amber-400 cursor-pointer font-bold py-1 border-b border-border-light/30 dark:border-border-dark/30 font-sans"
+                            >
+                              <span className={`transition-transform duration-200 text-[8px] ${(thinkingOpen[msg.id] !== undefined ? thinkingOpen[msg.id] : true) ? 'rotate-90' : ''}`}>▶</span>
+                              <span>{t.thinkingProcess}</span>
+                              {store.isGenerating && index === store.messages.length - 1 && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse ml-1" />
+                              )}
+                            </div>
+                            {(thinkingOpen[msg.id] !== undefined ? thinkingOpen[msg.id] : true) && (
+                              <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-900/40 text-gray-500 dark:text-gray-400 border border-border-light/40 dark:border-border-dark/40 rounded-xl max-h-60 overflow-y-auto leading-relaxed text-[11.5px] select-text prose dark:prose-invert prose-sm max-w-none">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.thinking}</ReactMarkdown>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Message Content rendering */}
+                        {isUser ? (
+                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                        ) : (
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              code({ node, className, children, ...props }) {
+                                const match = /language-(\w+)/.exec(className || '');
+                                const lang = match ? match[1] : '';
+                                const codeVal = String(children).replace(/\n$/, '');
+                                const isInline = !match;
+
+                                return !isInline ? (
+                                  <CodeBlock lang={lang} code={codeVal} copyLabel={t.copy} copiedLabel={t.copied} />
+                                ) : (
+                                  <code className="bg-card-light dark:bg-card-dark border border-border-light dark:border-border-dark px-1.5 py-0.5 rounded-md text-xs text-amber-700 dark:text-amber-400 font-mono break-all font-semibold" {...props}>
+                                    {children}
+                                  </code>
+                                );
+                              }
+                            }}
+                          >
+                            {msg.content || '...'}
+                          </ReactMarkdown>
+                        )}
+                      </div>
+                    )}
 
                     {/* Bottom Action strip (Assistant only, non-empty) */}
                     {!isUser && msg.content && (
-                      <div className="flex space-x-1.5 px-1 opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center space-x-1.5 px-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 mt-1 relative">
                         <ActionButton
                           icon={<Copy className="w-3 h-3" />}
                           label={t.copy}
@@ -383,6 +677,58 @@ export const ChatArea: React.FC = () => {
                           copiedLabel={t.copied}
                           onClick={() => store.regenerateResponse(index)}
                         />
+                        
+                        {/* Compare with another model button */}
+                        <div className="relative">
+                          <button
+                            onClick={() => setCompareDropdownOpen(compareDropdownOpen === msg.id ? null : msg.id)}
+                            className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
+                            title={t.compare}
+                          >
+                            <Scale className="w-3 h-3" />
+                            <span>{t.compare}</span>
+                          </button>
+
+                          {compareDropdownOpen === msg.id && (
+                            <div
+                              ref={dropdownCompareRef}
+                              className="absolute left-0 bottom-full mb-1.5 w-60 bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-xl shadow-2xl z-50 p-1.5 max-h-[220px] overflow-y-auto animate-scale-up"
+                            >
+                              <div className="px-2.5 py-1 text-[8px] font-bold text-gray-400 uppercase tracking-wider border-b border-border-light/40 dark:border-border-dark/40 mb-1 select-none">
+                                {t.compareModelSelect}
+                              </div>
+                              {allModels.map((m) => (
+                                <button
+                                  key={m.id}
+                                  onClick={() => {
+                                    store.regenerateResponse(index, m.id);
+                                    setCompareDropdownOpen(null);
+                                    // Automatically enable compare mode to see side-by-side
+                                    setCompareStates({ ...compareStates, [msg.id]: true });
+                                  }}
+                                  className="w-full text-left px-2.5 py-1.5 rounded-md text-[10px] text-gray-700 dark:text-gray-300 hover:bg-amber-500/5 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer truncate font-medium"
+                                  title={m.name}
+                                >
+                                  {m.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Create branch from this message */}
+                        <button
+                          onClick={() => {
+                            if (confirm(t.branchCreateConfirm)) {
+                              store.createBranch(index);
+                            }
+                          }}
+                          className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
+                          title={t.branchCreate}
+                        >
+                          <GitFork className="w-3 h-3" />
+                          <span>{t.branchCreate}</span>
+                        </button>
                       </div>
                     )}
 
@@ -390,8 +736,8 @@ export const ChatArea: React.FC = () => {
 
                   {/* Right Avatar (User only) */}
                   {isUser && (
-                    <div className="w-8 h-8 rounded-lg bg-border-light dark:bg-card-dark flex items-center justify-center text-gray-500 dark:text-gray-400 font-bold text-xs shrink-0 select-none border border-border-light dark:border-border-dark">
-                      <User className="w-4 h-4" />
+                    <div className="w-8 h-8 rounded-xl bg-card-light dark:bg-card-dark flex items-center justify-center text-gray-500 dark:text-gray-400 font-bold text-xs shrink-0 select-none border border-border-light dark:border-border-dark shadow-sm">
+                      <User className="w-4.5 h-4.5 text-gray-500" />
                     </div>
                   )}
 
@@ -404,23 +750,23 @@ export const ChatArea: React.FC = () => {
       </div>
 
       {/* Input container at the bottom */}
-      <div className="border-t border-border-light dark:border-border-dark p-4 shrink-0 bg-bg-light dark:bg-bg-dark">
-        <div className="max-w-3xl mx-auto relative flex flex-col border border-border-light dark:border-border-dark rounded-2xl bg-card-light/40 dark:bg-sidebar-dark/20 focus-within:border-accent-blue transition-colors">
+      <div className="p-4 shrink-0 bg-transparent">
+        <div className="max-w-3xl mx-auto relative flex flex-col border border-border-light dark:border-border-dark rounded-2xl bg-card-light/90 dark:bg-card-dark/95 shadow-xl shadow-black/5 dark:shadow-black/30 backdrop-blur-xl focus-within:border-amber-600 focus-within:ring-2 focus-within:ring-amber-500/10 transition-all duration-300">
           
           {/* File attachments list above text field */}
           {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 p-3 border-b border-border-light/60 dark:border-border-dark/60">
+            <div className="flex flex-wrap gap-2 p-3 border-b border-border-light/40 dark:border-border-dark/40 bg-bg-light/30 dark:bg-bg-dark/30 rounded-t-2xl">
               {attachments.map((att, idx) => (
-                <div key={idx} className="flex items-center space-x-1.5 bg-border-light/65 dark:bg-border-dark/65 px-2.5 py-1 rounded-lg border border-border-light dark:border-border-dark text-xs relative animate-scale-up">
+                <div key={idx} className="flex items-center space-x-2 bg-bg-light dark:bg-bg-dark px-3 py-1.5 rounded-xl border border-border-light dark:border-border-dark text-xs relative animate-scale-up shadow-sm">
                   {att.type === 'image' ? (
-                    <img src={att.content} alt={att.name} className="w-6 h-6 rounded object-cover" />
+                    <img src={att.content} alt={att.name} className="w-6 h-6 rounded-md object-cover" />
                   ) : (
-                    <FileText className="w-3.5 h-3.5 text-accent-blue" />
+                    <FileText className="w-3.5 h-3.5 text-amber-600 dark:text-amber-500" />
                   )}
-                  <span className="max-w-[130px] truncate text-[11px]">{att.name}</span>
+                  <span className="max-w-[130px] truncate text-[11px] font-medium text-gray-700 dark:text-gray-300">{att.name}</span>
                   <button
                     onClick={() => removeAttachment(idx)}
-                    className="p-0.5 rounded-full hover:bg-border-light dark:hover:bg-border-dark text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
+                    className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 cursor-pointer transition-colors"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -430,14 +776,14 @@ export const ChatArea: React.FC = () => {
           )}
 
           {/* Input field + upload trigger + send action button */}
-          <div className="flex items-end px-3 py-2.5">
+          <div className="flex items-end px-4 py-3">
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
-              className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-border-light/35 dark:hover:bg-border-dark/35 transition-colors cursor-pointer shrink-0"
+              className="p-2 text-gray-450 hover:text-amber-600 dark:hover:text-amber-500 rounded-xl hover:bg-bg-light dark:hover:bg-bg-dark transition-colors cursor-pointer shrink-0"
               title="ファイルを添付する (PDF, 画像, テキスト)"
             >
-              <Paperclip className="w-4 h-4" />
+              <Paperclip className="w-4.5 h-4.5" />
             </button>
             <input
               type="file"
@@ -461,30 +807,30 @@ export const ChatArea: React.FC = () => {
             {store.isGenerating ? (
               <button
                 onClick={store.stopGeneration}
-                className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors cursor-pointer shrink-0"
+                className="p-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-lg shadow-red-500/20 hover:shadow-red-500/30 transition-colors cursor-pointer shrink-0 active:scale-95 duration-150"
                 title={t.stop}
               >
-                <Square className="w-4 h-4 fill-white text-white" />
+                <Square className="w-4.5 h-4.5 fill-white text-white" />
               </button>
             ) : (
               <button
                 onClick={handleSend}
                 disabled={!inputText.trim() && attachments.length === 0}
-                className={`p-2 rounded-lg transition-colors shrink-0 ${
+                className={`p-2.5 rounded-xl transition-all shrink-0 active:scale-95 duration-150 ${
                   inputText.trim() || attachments.length > 0
-                    ? 'bg-accent-blue text-white cursor-pointer hover:bg-accent-blue/90'
-                    : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                    ? 'bg-amber-600 text-white cursor-pointer hover:bg-amber-700 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/35'
+                    : 'text-gray-300 dark:text-gray-600 bg-transparent cursor-not-allowed'
                 }`}
                 title={t.send}
               >
-                <Send className="w-4 h-4" />
+                <Send className="w-4.5 h-4.5" />
               </button>
             )}
           </div>
 
         </div>
 
-        <p className="text-[10px] text-gray-400 text-center mt-2 font-sans select-none">
+        <p className="text-[10px] text-gray-400 text-center mt-2.5 font-sans select-none tracking-wide">
           {t.disclaimer}
         </p>
       </div>
@@ -516,9 +862,9 @@ const ActionButton: React.FC<{
   return (
     <button
       onClick={handleAction}
-      className="flex items-center space-x-1 px-2 py-1 text-[10px] text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-border-light/30 dark:hover:bg-border-dark/30 rounded transition-colors cursor-pointer font-sans"
+      className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
     >
-      {clicked ? <Check className="w-2.5 h-2.5 text-accent-green animate-scale-up" /> : icon}
+      {clicked ? <Check className="w-3 h-3 text-emerald-500 animate-scale-up" /> : icon}
       <span>{clicked ? copiedLabel : label}</span>
     </button>
   );
@@ -543,18 +889,18 @@ const CodeBlock = ({
   };
   
   return (
-    <div className="my-3 rounded-xl overflow-hidden border border-border-light dark:border-border-dark bg-card-light dark:bg-[#1e1e1e] text-left">
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-[#2d2d2d] text-[11px] text-gray-500 dark:text-gray-400 font-mono select-none border-b border-border-light dark:border-border-dark">
-        <span className="font-semibold uppercase">{lang || 'text'}</span>
+    <div className="my-4.5 rounded-xl overflow-hidden border border-border-light dark:border-border-dark bg-zinc-50 dark:bg-[#0d0d0f] text-left shadow-sm">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-zinc-100 dark:bg-zinc-900 text-[11px] text-gray-500 dark:text-gray-450 font-mono select-none border-b border-border-light dark:border-border-dark">
+        <span className="font-bold uppercase tracking-wider">{lang || 'text'}</span>
         <button
           onClick={handleCopy}
-          className="hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex items-center space-x-1 cursor-pointer font-sans"
+          className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors flex items-center space-x-1.5 cursor-pointer font-sans font-semibold"
         >
-          {copied ? <Check className="w-3.5 h-3.5 text-accent-green" /> : null}
+          {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : null}
           <span>{copied ? copiedLabel : copyLabel}</span>
         </button>
       </div>
-      <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed font-mono text-gray-800 dark:text-[#d4d4d4]">
+      <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed font-mono text-gray-800 dark:text-[#d4d4d8]">
         <code>{code}</code>
       </pre>
     </div>

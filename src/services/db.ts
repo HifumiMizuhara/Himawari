@@ -8,6 +8,7 @@ export interface Chat {
   temperature: number;
   createdAt: number;
   updatedAt: number;
+  effort?: string;
 }
 
 export interface Attachment {
@@ -15,6 +16,14 @@ export interface Attachment {
   type: 'image' | 'pdf' | 'text';
   content: string; // base64 data URL for images, raw text for text/pdf
   size: number;
+}
+
+export interface MessageVariant {
+  id: string;
+  content: string;
+  thinking?: string;
+  modelUsed?: string;
+  timestamp: number;
 }
 
 export interface Message {
@@ -25,6 +34,9 @@ export interface Message {
   attachments?: Attachment[];
   modelUsed?: string;
   timestamp: number;
+  variants?: MessageVariant[];
+  activeVariantIndex?: number;
+  thinking?: string;
 }
 
 export interface Setting {

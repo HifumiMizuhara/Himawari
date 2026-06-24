@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db, type Chat, type Message, type Attachment, type ProviderConfig } from '../services/db';
+import { db, type Chat, type Message, type MessageVariant, type Attachment, type ProviderConfig } from '../services/db';
 import { streamChatCompletion } from '../services/api';
 
 interface ChatState {
@@ -8,6 +8,7 @@ interface ChatState {
   messages: Message[];
   activeChatId: string | null;
   activeModelId: string;
+  activeEffort: string;
   
   // Settings State
   providers: Record<string, ProviderConfig>;
@@ -32,7 +33,9 @@ interface ChatState {
   removeModelFromProvider: (providerId: string, modelId: string) => Promise<void>;
   fetchModelsForProvider: (providerId: string) => Promise<void>;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
-  setActiveModelId: (modelId: string) => void;
+  setActiveModelId: (modelId: string) => Promise<void>;
+  generationId: string | null;
+  setActiveEffort: (effort: string) => Promise<void>;
   
   // Chat Actions
   loadChats: () => Promise<void>;
@@ -41,10 +44,12 @@ interface ChatState {
   deleteChat: (chatId: string) => Promise<void>;
   renameChat: (chatId: string, title: string) => Promise<void>;
   clearAllChats: () => Promise<void>;
+  createBranch: (messageIndex: number) => Promise<void>;
   
   // Messaging Actions
   sendMessage: (content: string, attachments?: Attachment[]) => Promise<void>;
-  regenerateResponse: (messageIndex: number) => Promise<void>;
+  regenerateResponse: (messageIndex: number, targetModelId?: string) => Promise<void>;
+  switchMessageVariant: (messageId: string, variantIndex: number) => Promise<void>;
   stopGeneration: () => void;
   toggleSidebar: () => void;
   setSettingsOpen: (open: boolean) => void;
@@ -122,6 +127,7 @@ const DEFAULT_SETTINGS: Record<string, any> = {
   theme: 'dark',
   language: 'ja',
   activeModelId: 'gemini-1.5-flash',
+  activeEffort: 'none',
   sidebarOpen: 'true',
 };
 
@@ -130,6 +136,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   activeChatId: null,
   activeModelId: 'gemini-1.5-flash',
+  activeEffort: 'none',
   
   providers: DEFAULT_PROVIDERS,
   globalSystemPrompt: 'You are a helpful assistant.',
@@ -140,6 +147,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   settingsOpen: false,
   isGenerating: false,
   abortController: null,
+  generationId: null,
 
   init: async () => {
     // 1. Load settings from DB
@@ -155,16 +163,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const theme = getSetting('theme');
     const activeModelId = getSetting('activeModelId');
+    const activeEffort = getSetting('activeEffort') || 'none';
     const sidebarOpenVal = getSetting('sidebarOpen');
     
     let loadedProviders = getSetting('providers');
     if (!loadedProviders || typeof loadedProviders !== 'object') {
       loadedProviders = DEFAULT_PROVIDERS;
     } else {
-      // Merge with default config to ensure missing keys are populated
+      // Fix #10: merge at field level so new fields (e.g. corsProxy) are backfilled
       Object.keys(DEFAULT_PROVIDERS).forEach((key) => {
         if (!loadedProviders[key]) {
-          loadedProviders[key] = DEFAULT_PROVIDERS[key];
+          loadedProviders[key] = { ...DEFAULT_PROVIDERS[key] };
+        } else {
+          loadedProviders[key] = { ...DEFAULT_PROVIDERS[key], ...loadedProviders[key] };
         }
       });
     }
@@ -188,6 +199,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       theme,
       language: loadedLanguage,
       activeModelId,
+      activeEffort,
       sidebarOpen: sidebarOpenVal === 'true' || sidebarOpenVal === true,
     });
 
@@ -263,7 +275,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     if (providerId === 'gemini') {
       if (!prov.apiKey) return false;
-      url = `${corsPrefix}https://generativelanguage.googleapis.com/v1beta/models?key=${prov.apiKey}`;
+      url = `${corsPrefix}https://generativelanguage.googleapis.com/v1beta/models`;
+      headers['x-goog-api-key'] = prov.apiKey;
     } else if (providerId === 'ollama') {
       url = `${corsPrefix}${prov.baseUrl.replace(/\/$/, '')}/api/tags`;
     } else if (providerId === 'claude') {
@@ -326,7 +339,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     if (providerId === 'gemini') {
       if (!prov.apiKey) throw new Error('APIキーが入力されていません。');
-      url = `${corsPrefix}https://generativelanguage.googleapis.com/v1beta/models?key=${prov.apiKey}`;
+      url = `${corsPrefix}https://generativelanguage.googleapis.com/v1beta/models`;
+      headers['x-goog-api-key'] = prov.apiKey;
     } else if (providerId === 'ollama') {
       url = `${corsPrefix}${prov.baseUrl.replace(/\/$/, '')}/api/tags`;
     } else if (providerId === 'claude') {
@@ -404,6 +418,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await db.settings.put({ key: 'activeModelId', value: modelId });
   },
 
+  setActiveEffort: async (effort) => {
+    set({ activeEffort: effort });
+    await db.settings.put({ key: 'activeEffort', value: effort });
+
+    const activeChatId = get().activeChatId;
+    if (activeChatId) {
+      await db.chats.update(activeChatId, { effort });
+      // Fix #14: update in-memory list directly instead of triggering a full loadChats reload
+      set(state => ({
+        chats: state.chats.map(c => c.id === activeChatId ? { ...c, effort } : c),
+      }));
+    }
+  },
+
   loadChats: async () => {
     const chatsList = await db.chats.orderBy('updatedAt').reverse().toArray();
     set({ chats: chatsList });
@@ -412,11 +440,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   selectChat: async (chatId) => {
     set({ activeChatId: chatId });
     if (chatId) {
+      // Fix #12: query DB directly instead of stale in-memory chats list
+      const chat = await db.chats.get(chatId);
       const chatMessages = await db.messages
         .where('chatId')
         .equals(chatId)
         .sortBy('timestamp');
-      set({ messages: chatMessages });
+      set({ 
+        messages: chatMessages,
+        activeModelId: chat?.modelId || get().activeModelId,
+        activeEffort: chat?.effort || 'none',
+      });
     } else {
       set({ messages: [] });
     }
@@ -428,6 +462,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       title: 'New Chat',
       modelId: modelId || get().activeModelId,
       temperature: 0.7,
+      effort: get().activeEffort,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -496,15 +531,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const messagesSoFar = await db.messages.where('chatId').equals(chatId).sortBy('timestamp');
     set({ messages: messagesSoFar });
 
-    // 2. Prepare Assistant response placeholder
+    // 2. Prepare Assistant response placeholder with initial variant
     const assistantMsgId = crypto.randomUUID();
+    const activeModelId = activeChat?.modelId || get().activeModelId;
+    
+    const initialVariant: MessageVariant = {
+      id: crypto.randomUUID(),
+      content: '',
+      thinking: '',
+      modelUsed: activeModelId,
+      timestamp: Date.now(),
+    };
+
     const assistantMsg: Message = {
       id: assistantMsgId,
       chatId,
       role: 'assistant',
       content: '',
-      modelUsed: activeChat?.modelId || get().activeModelId,
+      thinking: '',
+      modelUsed: activeModelId,
       timestamp: Date.now() + 1,
+      variants: [initialVariant],
+      activeVariantIndex: 0,
     };
 
     await db.messages.add(assistantMsg);
@@ -514,7 +562,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isGenerating: true 
     });
 
-    const activeModelId = assistantMsg.modelUsed || get().activeModelId;
     let providerConfig: ProviderConfig | undefined;
 
     // Search active model among enabled providers first
@@ -539,19 +586,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     const controller = new AbortController();
-    set({ abortController: controller });
+    // Fix #2: generation token lets the finally block skip reset if a new generation already started
+    const myGenId = crypto.randomUUID();
+    set({ abortController: controller, generationId: myGenId });
 
     try {
       const systemPrompt = activeChat?.systemPrompt || get().globalSystemPrompt;
       const temperature = activeChat?.temperature ?? 0.7;
 
-      const chatContext = messagesSoFar.map(m => ({
-        role: m.role,
-        content: m.content,
-        attachments: m.attachments,
-      }));
+      // Extract text content from variants for context if variants exist
+      const chatContext = messagesSoFar.map(m => {
+        // Use active variant content if it's an assistant message and has variants
+        let msgContent = m.content;
+        if (m.role === 'assistant' && m.variants && m.activeVariantIndex !== undefined) {
+          const activeVar = m.variants[m.activeVariantIndex];
+          if (activeVar) msgContent = activeVar.content;
+        }
+        return {
+          role: m.role,
+          content: msgContent,
+          attachments: m.attachments,
+        };
+      });
 
       let accumulatedText = '';
+      let accumulatedThinking = '';
       
       await streamChatCompletion(
         {
@@ -561,17 +620,71 @@ export const useChatStore = create<ChatState>((set, get) => ({
           newMessage: { content, attachments },
           systemPrompt,
           temperature,
+          effort: get().activeEffort,
         },
         async (chunk) => {
           accumulatedText += chunk;
           
           set((state) => ({
-            messages: state.messages.map((m) =>
-              m.id === assistantMsgId ? { ...m, content: accumulatedText } : m
-            ),
+            messages: state.messages.map((m) => {
+              if (m.id === assistantMsgId) {
+                const updatedVariants = [...(m.variants || [])];
+                const activeIndex = m.activeVariantIndex ?? 0;
+                if (updatedVariants[activeIndex]) {
+                  updatedVariants[activeIndex] = {
+                    ...updatedVariants[activeIndex],
+                    content: accumulatedText,
+                  };
+                }
+                return {
+                  ...m,
+                  content: accumulatedText,
+                  variants: updatedVariants,
+                };
+              }
+              return m;
+            }),
           }));
 
-          await db.messages.update(assistantMsgId, { content: accumulatedText });
+          const targetMsg = get().messages.find(m => m.id === assistantMsgId);
+          if (targetMsg) {
+            await db.messages.update(assistantMsgId, { 
+              content: accumulatedText,
+              variants: targetMsg.variants,
+            });
+          }
+        },
+        async (thinkingChunk) => {
+          accumulatedThinking += thinkingChunk;
+
+          set((state) => ({
+            messages: state.messages.map((m) => {
+              if (m.id === assistantMsgId) {
+                const updatedVariants = [...(m.variants || [])];
+                const activeIndex = m.activeVariantIndex ?? 0;
+                if (updatedVariants[activeIndex]) {
+                  updatedVariants[activeIndex] = {
+                    ...updatedVariants[activeIndex],
+                    thinking: accumulatedThinking,
+                  };
+                }
+                return {
+                  ...m,
+                  thinking: accumulatedThinking,
+                  variants: updatedVariants,
+                };
+              }
+              return m;
+            }),
+          }));
+
+          const targetMsg = get().messages.find(m => m.id === assistantMsgId);
+          if (targetMsg) {
+            await db.messages.update(assistantMsgId, { 
+              thinking: accumulatedThinking,
+              variants: targetMsg.variants,
+            });
+          }
         },
         controller.signal
       );
@@ -582,29 +695,66 @@ export const useChatStore = create<ChatState>((set, get) => ({
       } else {
         console.error('Error generating response:', error);
         const errMsg = `\n\n*(Error: ${error.message || 'Failed to generate response. Please check your API keys, network, or CORS settings.'})*`;
+        
         set((state) => ({
-          messages: state.messages.map((m) =>
-            m.id === assistantMsgId ? { ...m, content: m.content + errMsg } : m
-          ),
+          messages: state.messages.map((m) => {
+            if (m.id === assistantMsgId) {
+              const updatedVariants = [...(m.variants || [])];
+              const activeIndex = m.activeVariantIndex ?? 0;
+              const newContent = m.content + errMsg;
+              if (updatedVariants[activeIndex]) {
+                updatedVariants[activeIndex] = {
+                  ...updatedVariants[activeIndex],
+                  content: newContent,
+                };
+              }
+              return {
+                ...m,
+                content: newContent,
+                variants: updatedVariants,
+              };
+            }
+            return m;
+          }),
         }));
-        await db.messages.update(assistantMsgId, { 
-          content: (get().messages.find(m => m.id === assistantMsgId)?.content || '') + errMsg 
-        });
+
+        const targetMsg = get().messages.find(m => m.id === assistantMsgId);
+        if (targetMsg) {
+          await db.messages.update(assistantMsgId, { 
+            content: targetMsg.content,
+            variants: targetMsg.variants,
+          });
+        }
       }
     } finally {
-      set({ isGenerating: false, abortController: null });
-      await db.chats.update(chatId, { updatedAt: Date.now() });
-      await get().loadChats();
+      // Fix #2: only reset if no newer generation has taken over
+      if (get().generationId === myGenId) {
+        set({ isGenerating: false, abortController: null, generationId: null });
+      }
+      // Fix #11: guard DB writes so errors don't escape as uncaught rejections
+      try {
+        await db.chats.update(chatId, { updatedAt: Date.now() });
+        await get().loadChats();
+      } catch (e) {
+        console.error('Failed to update chat metadata:', e);
+      }
     }
   },
 
-  regenerateResponse: async (messageIndex) => {
+  regenerateResponse: async (messageIndex, targetModelId) => {
     const chatId = get().activeChatId;
     if (!chatId || messageIndex < 0 || messageIndex >= get().messages.length) return;
 
-    get().stopGeneration();
+    // Fix #2: abort the old stream without resetting state; the old finally will see
+    // a mismatched generationId and skip its reset, so the new generation runs cleanly.
+    const existingController = get().abortController;
+    if (existingController) existingController.abort();
 
     const messages = [...get().messages];
+    const assistantMsg = messages[messageIndex];
+    if (assistantMsg.role !== 'assistant') return;
+
+    // 1. Find the last user message index before this assistant message
     let lastUserIndex = -1;
     for (let i = messageIndex - 1; i >= 0; i--) {
       if (messages[i].role === 'user') {
@@ -612,18 +762,288 @@ export const useChatStore = create<ChatState>((set, get) => ({
         break;
       }
     }
-
     if (lastUserIndex === -1) return;
 
-    const idsToDelete = messages.slice(lastUserIndex + 1).map(m => m.id);
-    await db.messages.bulkDelete(idsToDelete);
+    // 2. Prepare new response variant
+    const modelUsed = targetModelId || assistantMsg.modelUsed || get().activeModelId;
+    const newVariant: MessageVariant = {
+      id: crypto.randomUUID(),
+      content: '',
+      thinking: '',
+      modelUsed,
+      timestamp: Date.now(),
+    };
 
-    const userMsg = messages[lastUserIndex];
+    // If variants array is empty, initialize it with the current message contents as the first variant
+    const existingVariants = assistantMsg.variants ? [...assistantMsg.variants] : [];
+    if (existingVariants.length === 0) {
+      existingVariants.push({
+        id: crypto.randomUUID(),
+        content: assistantMsg.content,
+        thinking: assistantMsg.thinking || '',
+        modelUsed: assistantMsg.modelUsed,
+        timestamp: assistantMsg.timestamp,
+      });
+    }
 
-    const truncatedMessages = messages.slice(0, lastUserIndex + 1);
-    set({ messages: truncatedMessages });
+    const newVariants = [...existingVariants, newVariant];
+    const newActiveIndex = newVariants.length - 1;
 
-    await get().sendMessage(userMsg.content, userMsg.attachments);
+    const updatedAssistantMsg = {
+      ...assistantMsg,
+      content: '', // Start empty for streaming
+      thinking: '',
+      modelUsed,
+      variants: newVariants,
+      activeVariantIndex: newActiveIndex,
+    };
+
+    await db.messages.put(updatedAssistantMsg);
+
+    const updatedMessages = messages.map((m, idx) => 
+      idx === messageIndex ? updatedAssistantMsg : m
+    );
+    set({ messages: updatedMessages, isGenerating: true });
+
+    // 3. Prepare chat context up to the user message
+    const messagesBefore = messages.slice(0, lastUserIndex + 1);
+    const chatContext = messagesBefore.map(m => {
+      let msgContent = m.content;
+      if (m.role === 'assistant' && m.variants && m.activeVariantIndex !== undefined) {
+        const activeVar = m.variants[m.activeVariantIndex];
+        if (activeVar) msgContent = activeVar.content;
+      }
+      return {
+        role: m.role,
+        content: msgContent,
+        attachments: m.attachments,
+      };
+    });
+
+    let providerConfig: ProviderConfig | undefined;
+    for (const prov of Object.values(get().providers)) {
+      if (prov.enabled && prov.models.includes(modelUsed)) {
+        providerConfig = prov;
+        break;
+      }
+    }
+
+    if (!providerConfig) {
+      for (const prov of Object.values(get().providers)) {
+        if (prov.models.includes(modelUsed)) {
+          providerConfig = prov;
+          break;
+        }
+      }
+    }
+
+    if (!providerConfig) {
+      providerConfig = get().providers.custom;
+    }
+
+    const controller = new AbortController();
+    const myGenId = crypto.randomUUID();
+    set({ abortController: controller, generationId: myGenId });
+
+    try {
+      const activeChat = get().chats.find(c => c.id === chatId);
+      const systemPrompt = activeChat?.systemPrompt || get().globalSystemPrompt;
+      const temperature = activeChat?.temperature ?? 0.7;
+
+      let accumulatedText = '';
+      let accumulatedThinking = '';
+
+      await streamChatCompletion(
+        {
+          providerConfig,
+          modelId: modelUsed,
+          // Fix #1: include the full context (with user message); newMessage is unused by prepareContext
+          messages: chatContext,
+          newMessage: { content: '', attachments: [] },
+          systemPrompt,
+          temperature,
+          effort: get().activeEffort,
+        },
+        async (chunk) => {
+          accumulatedText += chunk;
+
+          set((state) => ({
+            messages: state.messages.map((m) => {
+              if (m.id === assistantMsg.id) {
+                const updatedVariants = [...(m.variants || [])];
+                if (updatedVariants[newActiveIndex]) {
+                  updatedVariants[newActiveIndex] = {
+                    ...updatedVariants[newActiveIndex],
+                    content: accumulatedText,
+                  };
+                }
+                return {
+                  ...m,
+                  content: accumulatedText,
+                  variants: updatedVariants,
+                };
+              }
+              return m;
+            }),
+          }));
+
+          const targetMsg = get().messages.find(m => m.id === assistantMsg.id);
+          if (targetMsg) {
+            await db.messages.update(assistantMsg.id, {
+              content: accumulatedText,
+              variants: targetMsg.variants,
+            });
+          }
+        },
+        async (thinkingChunk) => {
+          accumulatedThinking += thinkingChunk;
+
+          set((state) => ({
+            messages: state.messages.map((m) => {
+              if (m.id === assistantMsg.id) {
+                const updatedVariants = [...(m.variants || [])];
+                if (updatedVariants[newActiveIndex]) {
+                  updatedVariants[newActiveIndex] = {
+                    ...updatedVariants[newActiveIndex],
+                    thinking: accumulatedThinking,
+                  };
+                }
+                return {
+                  ...m,
+                  thinking: accumulatedThinking,
+                  variants: updatedVariants,
+                };
+              }
+              return m;
+            }),
+          }));
+
+          const targetMsg = get().messages.find(m => m.id === assistantMsg.id);
+          if (targetMsg) {
+            await db.messages.update(assistantMsg.id, {
+              thinking: accumulatedThinking,
+              variants: targetMsg.variants,
+            });
+          }
+        },
+        controller.signal
+      );
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('Regeneration aborted');
+      } else {
+        console.error('Error regenerating response:', error);
+        const errMsg = `\n\n*(Error: ${error.message || 'Failed to generate response.'})*`;
+        
+        set((state) => ({
+          messages: state.messages.map((m) => {
+            if (m.id === assistantMsg.id) {
+              const updatedVariants = [...(m.variants || [])];
+              const newContent = m.content + errMsg;
+              if (updatedVariants[newActiveIndex]) {
+                updatedVariants[newActiveIndex] = {
+                  ...updatedVariants[newActiveIndex],
+                  content: newContent,
+                };
+              }
+              return {
+                ...m,
+                content: newContent,
+                variants: updatedVariants,
+              };
+            }
+            return m;
+          }),
+        }));
+
+        const targetMsg = get().messages.find(m => m.id === assistantMsg.id);
+        if (targetMsg) {
+          await db.messages.update(assistantMsg.id, {
+            content: targetMsg.content,
+            variants: targetMsg.variants,
+          });
+        }
+      }
+    } finally {
+      if (get().generationId === myGenId) {
+        set({ isGenerating: false, abortController: null, generationId: null });
+      }
+      try {
+        await db.chats.update(chatId, { updatedAt: Date.now() });
+        await get().loadChats();
+      } catch (e) {
+        console.error('Failed to update chat metadata:', e);
+      }
+    }
+  },
+
+  switchMessageVariant: async (messageId, variantIndex) => {
+    const messages = [...get().messages];
+    const msgIndex = messages.findIndex(m => m.id === messageId);
+    if (msgIndex === -1) return;
+
+    const msg = messages[msgIndex];
+    if (!msg.variants || variantIndex < 0 || variantIndex >= msg.variants.length) return;
+
+    const variant = msg.variants[variantIndex];
+    const updatedMsg: Message = {
+      ...msg,
+      activeVariantIndex: variantIndex,
+      content: variant.content,
+      thinking: variant.thinking || '',
+      modelUsed: variant.modelUsed,
+    };
+
+    await db.messages.put(updatedMsg);
+
+    const updatedMessages = messages.map((m) => 
+      m.id === messageId ? updatedMsg : m
+    );
+    set({ messages: updatedMessages });
+  },
+
+  createBranch: async (messageIndex) => {
+    const activeChatId = get().activeChatId;
+    if (!activeChatId || messageIndex < 0 || messageIndex >= get().messages.length) return;
+
+    const activeChat = get().chats.find(c => c.id === activeChatId);
+    if (!activeChat) return;
+
+    // 1. Create a new chat
+    const newChatId = crypto.randomUUID();
+    const branchChat: Chat = {
+      id: newChatId,
+      title: `${activeChat.title} (Branch)`,
+      modelId: activeChat.modelId,
+      temperature: activeChat.temperature,
+      effort: activeChat.effort,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    await db.chats.add(branchChat);
+
+    // 2. Copy messages up to the selected index
+    const messagesToCopy = get().messages.slice(0, messageIndex + 1);
+    const copiedMessages: Message[] = messagesToCopy.map((m) => ({
+      id: crypto.randomUUID(),
+      chatId: newChatId,
+      role: m.role,
+      content: m.content,
+      attachments: m.attachments ? [...m.attachments] : undefined,
+      modelUsed: m.modelUsed,
+      timestamp: m.timestamp,
+      variants: m.variants ? [...m.variants] : undefined,
+      activeVariantIndex: m.activeVariantIndex,
+    }));
+
+    if (copiedMessages.length > 0) {
+      await db.messages.bulkAdd(copiedMessages);
+    }
+
+    // 3. Reload list and select the new branched chat
+    await get().loadChats();
+    await get().selectChat(newChatId);
   },
 
   stopGeneration: () => {
@@ -631,7 +1051,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (controller) {
       controller.abort();
     }
-    set({ isGenerating: false, abortController: null });
+    set({ isGenerating: false, abortController: null, generationId: null });
   },
 
   toggleSidebar: async () => {

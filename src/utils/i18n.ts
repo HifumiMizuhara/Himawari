@@ -74,6 +74,22 @@ export const translations = {
     sugWebgpuTitle: '学習アシスタント',
     sugWebgpuPrompt: 'WebGPUとは何ですか？フロントエンド開発におけるメリットを分かりやすく教えて。',
     
+    // Roles
+    user: 'ユーザ',
+
+    // Thinking / Compare / Branch
+    thinkingProcess: '思考プロセス',
+    normalView: '通常表示',
+    compareView: '対照表示',
+    setActive: 'アクティブにする',
+    compare: '対照',
+    compareModelSelect: '対照用モデルを選択',
+    branchCreate: 'ブランチ作成',
+    branchCreateConfirm: 'このメッセージの時点から新しいチャットブランチを作成しますか？',
+    effortNone: 'なし',
+    effortCustom: 'カスタム入力...',
+    effortLabel: 'Effort',
+
     // DB alerts / generic errors
     fileLoadError: 'ファイルの読み込みに失敗しました。',
     pdfExtractError: 'PDFのテキスト解析に失敗しました。ファイルが壊れているか、保護されている可能性があります。',
@@ -153,6 +169,22 @@ export const translations = {
     sugWebgpuTitle: 'Learning Assistant',
     sugWebgpuPrompt: 'What is WebGPU? What are its benefits in frontend development?',
     
+    // Roles
+    user: 'User',
+
+    // Thinking / Compare / Branch
+    thinkingProcess: 'Thinking Process',
+    normalView: 'Normal View',
+    compareView: 'Compare View',
+    setActive: 'Set Active',
+    compare: 'Compare',
+    compareModelSelect: 'Select Compare Model',
+    branchCreate: 'Branch',
+    branchCreateConfirm: 'Create a new chat branch from this message?',
+    effortNone: 'None',
+    effortCustom: 'Custom...',
+    effortLabel: 'Effort',
+
     // DB alerts / generic errors
     fileLoadError: 'Failed to read file.',
     pdfExtractError: 'Failed to extract text from PDF. The file may be corrupted or protected.',
@@ -232,6 +264,22 @@ export const translations = {
     sugWebgpuTitle: '学习助手',
     sugWebgpuPrompt: '什么是 WebGPU？它在前端开发中有什么优势？',
     
+    // Roles
+    user: '用户',
+
+    // Thinking / Compare / Branch
+    thinkingProcess: '思考过程',
+    normalView: '普通视图',
+    compareView: '对比视图',
+    setActive: '设为激活',
+    compare: '对照',
+    compareModelSelect: '选择对比模型',
+    branchCreate: '建立分支',
+    branchCreateConfirm: '从此消息创建新的对话分支？',
+    effortNone: '无',
+    effortCustom: '自定义...',
+    effortLabel: 'Effort',
+
     // DB alerts / generic errors
     fileLoadError: '读取文件失败。',
     pdfExtractError: '未能从 PDF 提取文本。文件可能已损坏或受保护。',
