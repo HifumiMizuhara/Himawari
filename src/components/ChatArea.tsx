@@ -1,19 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatStore } from '../store/useChatStore';
+import { useTranslation } from '../hooks/useTranslation';
 import { db, type Attachment } from '../services/db';
 import { extractTextFromPdf, readFileAsText, readFileAsBase64 } from '../utils/fileParser';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
-  Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Sparkles, Check, User
+  Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Sparkles, Check, User, Search
 } from 'lucide-react';
 
 export const ChatArea: React.FC = () => {
   const store = useChatStore();
+  const { t } = useTranslation();
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  
+  // Model search state
+  const [modelSearchQuery, setModelSearchQuery] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -68,6 +73,15 @@ export const ChatArea: React.FC = () => {
   };
 
   const allModels = getAvailableModels();
+  
+  // Get filtered models based on search query
+  const getFilteredModels = () => {
+    if (!modelSearchQuery.trim()) return allModels;
+    return allModels.filter(m => m.name.toLowerCase().includes(modelSearchQuery.toLowerCase()));
+  };
+
+  const filteredModels = getFilteredModels();
+
   const activeModel = allModels.find(m => m.id === store.activeModelId) || {
     id: store.activeModelId,
     name: store.activeModelId,
@@ -77,13 +91,13 @@ export const ChatArea: React.FC = () => {
   const handleModelSelect = async (modelId: string) => {
     store.setActiveModelId(modelId);
     
-    // If there is an active chat session, update its modelId in DB too
     if (store.activeChatId) {
       await db.chats.update(store.activeChatId, { modelId });
       await store.loadChats();
     }
 
     setShowModelDropdown(false);
+    setModelSearchQuery('');
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -113,7 +127,6 @@ export const ChatArea: React.FC = () => {
             size: file.size,
           });
         } else {
-          // Standard text file or fallback
           const text = await readFileAsText(file);
           newAttachments.push({
             name: file.name,
@@ -123,14 +136,13 @@ export const ChatArea: React.FC = () => {
           });
         }
       } catch (err: any) {
-        alert(err.message || `${file.name} の読み込みに失敗しました。`);
+        alert(err.message || t.fileLoadError);
       }
     }
 
     setAttachments((prev) => [...prev, ...newAttachments]);
     setIsUploading(false);
     
-    // Reset file input
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -158,7 +170,6 @@ export const ChatArea: React.FC = () => {
     }
   };
 
-  // Click quick suggestion card
   const handleSuggestionClick = (text: string) => {
     setInputText(text);
     if (textareaRef.current) {
@@ -175,7 +186,10 @@ export const ChatArea: React.FC = () => {
         {/* Model Dropdown */}
         <div className="relative" ref={dropdownRef}>
           <button
-            onClick={() => setShowModelDropdown(!showModelDropdown)}
+            onClick={() => {
+              setShowModelDropdown(!showModelDropdown);
+              setModelSearchQuery('');
+            }}
             className="flex items-center space-x-1.5 px-3 py-1.5 hover:bg-border-light/40 dark:hover:bg-border-dark/40 rounded-lg text-sm font-semibold transition-colors cursor-pointer"
           >
             <span>{activeModel.name}</span>
@@ -184,15 +198,31 @@ export const ChatArea: React.FC = () => {
 
           {showModelDropdown && (
             <div className="absolute left-0 mt-1.5 w-72 bg-bg-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl shadow-xl z-50 py-1 max-h-[350px] overflow-y-auto">
+              
+              {/* Search bar inside model selector dropdown */}
+              <div className="p-2 border-b border-border-light dark:border-border-dark relative">
+                <input
+                  type="text"
+                  placeholder={t.searchModels}
+                  value={modelSearchQuery}
+                  onChange={(e) => setModelSearchQuery(e.target.value)}
+                  className="w-full pl-7 pr-3 py-1 bg-card-light dark:bg-sidebar-dark text-xs border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue"
+                  autoFocus
+                />
+                <Search className="absolute left-3.5 top-[13px] w-3 h-3 text-gray-400" />
+              </div>
+
               {/* Group models by active providers */}
               {Object.values(store.providers).map((prov) => {
                 if (!prov.enabled) return null;
-                const groupModels = allModels.filter((m) => m.group === prov.name);
+                
+                // Filter group models by query
+                const groupModels = filteredModels.filter((m) => m.group === prov.name);
                 if (groupModels.length === 0) return null;
                 
                 return (
                   <div key={prov.id} className="py-1">
-                    <div className="px-3 py-1 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                    <div className="px-3 py-1 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider bg-card-light/20 dark:bg-sidebar-dark/20">
                       {prov.name}
                     </div>
                     {groupModels.map((model) => (
@@ -203,7 +233,7 @@ export const ChatArea: React.FC = () => {
                           store.activeModelId === model.id ? 'text-accent-blue font-semibold bg-accent-blue/5' : ''
                         }`}
                       >
-                        <span className="truncate">{model.name}</span>
+                        <span className="truncate pr-4">{model.name}</span>
                         {store.activeModelId === model.id && <Check className="w-3.5 h-3.5" />}
                       </button>
                     ))}
@@ -216,7 +246,7 @@ export const ChatArea: React.FC = () => {
 
         {/* Action icons / details */}
         <div className="text-xs text-gray-400 dark:text-gray-500 font-mono hidden sm:block">
-          {store.isGenerating ? '回答生成中...' : '待機中'}
+          {store.isGenerating ? t.generating : t.idle}
         </div>
 
       </div>
@@ -233,20 +263,20 @@ export const ChatArea: React.FC = () => {
             
             <div className="space-y-2">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                どのようなお手伝いをしましょうか？
+                {t.howCanIHelp}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                モデルを選択し、質問の入力やファイルを添付して会話を始めましょう。
+                {t.howCanIHelpSub}
               </p>
             </div>
 
             {/* Suggestions Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-4">
               {[
-                { title: '実装サポート', prompt: 'JavaScriptでクイックソートアルゴリズムの実装コードを書き、仕組みを説明してください。' },
-                { title: '文章作成・推敲', prompt: 'プロジェクトの進捗報告メールを作成してください。トーンは丁寧かつ簡潔に。' },
-                { title: '要約・分析', prompt: '「タイムマネジメント」に関する主要な3つのメリットをまとめ、リストにしてください。' },
-                { title: '学習アシスタント', prompt: 'WebGPUとは何ですか？フロントエンド開発におけるメリットを分かりやすく教えて。' },
+                { title: t.sugCodeTitle, prompt: t.sugCodePrompt },
+                { title: t.sugMailTitle, prompt: t.sugMailPrompt },
+                { title: t.sugSumTitle, prompt: t.sugSumPrompt },
+                { title: t.sugWebgpuTitle, prompt: t.sugWebgpuPrompt },
               ].map((card, idx) => (
                 <button
                   key={idx}
@@ -284,7 +314,7 @@ export const ChatArea: React.FC = () => {
                     
                     {/* Role header / model tag */}
                     <div className="flex items-center space-x-1.5 text-[10px] text-gray-400 font-semibold px-1">
-                      <span>{isUser ? 'あなた' : msg.modelUsed || 'Assistant'}</span>
+                      <span>{isUser ? t.themeSystem.replace('同期', '') : msg.modelUsed || 'Assistant'}</span>
                     </div>
 
                     {/* Content Box */}
@@ -324,7 +354,7 @@ export const ChatArea: React.FC = () => {
                               const isInline = !match;
 
                               return !isInline ? (
-                                <CodeBlock lang={lang} code={codeVal} />
+                                <CodeBlock lang={lang} code={codeVal} copyLabel={t.copy} copiedLabel={t.copied} />
                               ) : (
                                 <code className="bg-card-light dark:bg-card-dark px-1.5 py-0.5 rounded text-xs text-red-500 dark:text-red-400 font-mono break-all" {...props}>
                                   {children}
@@ -343,12 +373,14 @@ export const ChatArea: React.FC = () => {
                       <div className="flex space-x-1.5 px-1 opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity">
                         <ActionButton
                           icon={<Copy className="w-3 h-3" />}
-                          label="コピー"
+                          label={t.copy}
+                          copiedLabel={t.copied}
                           onClick={() => navigator.clipboard.writeText(msg.content)}
                         />
                         <ActionButton
                           icon={<RotateCcw className="w-3 h-3" />}
-                          label="再生成"
+                          label={t.regenerate}
+                          copiedLabel={t.copied}
                           onClick={() => store.regenerateResponse(index)}
                         />
                       </div>
@@ -399,7 +431,6 @@ export const ChatArea: React.FC = () => {
 
           {/* Input field + upload trigger + send action button */}
           <div className="flex items-end px-3 py-2.5">
-            {/* Paperclip upload button */}
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
@@ -417,23 +448,21 @@ export const ChatArea: React.FC = () => {
               className="hidden"
             />
 
-            {/* Input textarea */}
             <textarea
               ref={textareaRef}
               rows={1}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="メッセージを入力... (Shift+Enterで改行)"
+              placeholder={t.inputTextPlaceholder}
               className="flex-1 px-3 py-2 bg-transparent focus:outline-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 resize-none max-h-[200px]"
             />
 
-            {/* Send or Stop Generation */}
             {store.isGenerating ? (
               <button
                 onClick={store.stopGeneration}
                 className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors cursor-pointer shrink-0"
-                title="生成停止"
+                title={t.stop}
               >
                 <Square className="w-4 h-4 fill-white text-white" />
               </button>
@@ -446,7 +475,7 @@ export const ChatArea: React.FC = () => {
                     ? 'bg-accent-blue text-white cursor-pointer hover:bg-accent-blue/90'
                     : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
                 }`}
-                title="送信"
+                title={t.send}
               >
                 <Send className="w-4 h-4" />
               </button>
@@ -455,9 +484,8 @@ export const ChatArea: React.FC = () => {
 
         </div>
 
-        {/* Small prompt disclaimer */}
         <p className="text-[10px] text-gray-400 text-center mt-2 font-sans select-none">
-          AI answers can be incorrect. Verify important info. Project Minase.
+          {t.disclaimer}
         </p>
       </div>
 
@@ -466,9 +494,15 @@ export const ChatArea: React.FC = () => {
 };
 
 // Sub-components to keep layout neat
-const ActionButton: React.FC<{ icon: React.ReactNode; label: string; onClick: () => void }> = ({
+const ActionButton: React.FC<{ 
+  icon: React.ReactNode; 
+  label: string; 
+  copiedLabel: string;
+  onClick: () => void 
+}> = ({
   icon,
   label,
+  copiedLabel,
   onClick,
 }) => {
   const [clicked, setClicked] = useState(false);
@@ -485,12 +519,22 @@ const ActionButton: React.FC<{ icon: React.ReactNode; label: string; onClick: ()
       className="flex items-center space-x-1 px-2 py-1 text-[10px] text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-border-light/30 dark:hover:bg-border-dark/30 rounded transition-colors cursor-pointer font-sans"
     >
       {clicked ? <Check className="w-2.5 h-2.5 text-accent-green animate-scale-up" /> : icon}
-      <span>{clicked ? '完了!' : label}</span>
+      <span>{clicked ? copiedLabel : label}</span>
     </button>
   );
 };
 
-const CodeBlock = ({ lang, code }: { lang: string; code: string }) => {
+const CodeBlock = ({ 
+  lang, 
+  code, 
+  copyLabel, 
+  copiedLabel 
+}: { 
+  lang: string; 
+  code: string; 
+  copyLabel: string; 
+  copiedLabel: string 
+}) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
@@ -507,7 +551,7 @@ const CodeBlock = ({ lang, code }: { lang: string; code: string }) => {
           className="hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex items-center space-x-1 cursor-pointer font-sans"
         >
           {copied ? <Check className="w-3.5 h-3.5 text-accent-green" /> : null}
-          <span>{copied ? 'Copied!' : 'Copy'}</span>
+          <span>{copied ? copiedLabel : copyLabel}</span>
         </button>
       </div>
       <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed font-mono text-gray-800 dark:text-[#d4d4d4]">

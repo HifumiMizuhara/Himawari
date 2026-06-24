@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useChatStore } from '../store/useChatStore';
+import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/db';
 import { 
   X, Shield, Settings, Database, Eye, EyeOff, Check, AlertCircle, Search, 
@@ -30,6 +31,7 @@ const PROVIDER_KEY_LINKS: Record<string, string> = {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const store = useChatStore();
+  const { t, language } = useTranslation();
   const [activeTab, setActiveTab] = useState<'connections' | 'prompt' | 'data'>('connections');
   
   // Left Sidebar State
@@ -80,7 +82,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     try {
       await store.fetchModelsForProvider(selectedProviderId);
     } catch (err: any) {
-      setFetchError(err.message || 'モデル一覧の取得に失敗しました。');
+      setFetchError(err.message || t.fileLoadError);
     } finally {
       setIsFetchingModels(false);
     }
@@ -99,9 +101,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     e.preventDefault();
     if (newCustomName.trim()) {
       await store.addProvider(newCustomName.trim(), newCustomUrl.trim());
-      // Select the newly added provider
       const updatedList = Object.keys(store.providers);
-      // Wait a moment for store update
       setTimeout(() => {
         const newId = Object.keys(useChatStore.getState().providers).find(
           (k) => !updatedList.includes(k)
@@ -116,7 +116,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   };
 
   const handleDeleteProvider = async (pId: string, name: string) => {
-    if (confirm(`プロバイダー「${name}」を削除しますか？`)) {
+    if (confirm(t.deleteProviderConfirm.replace('{name}', name))) {
       await store.deleteProvider(pId);
       if (selectedProviderId === pId) {
         setSelectedProviderId('gemini');
@@ -128,7 +128,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const groupModels = (models: string[]) => {
     const groups: Record<string, string[]> = {};
     models.forEach((model) => {
-      let group = 'other';
+      let group = 'Other';
       if (model.includes('/')) {
         group = model.split('/')[0];
       } else if (model.includes(':')) {
@@ -156,7 +156,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     return groups;
   };
 
-  // Get filtered providers
   const getFilteredProviders = () => {
     return Object.values(store.providers).filter((p) =>
       p.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -182,7 +181,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (e) {
-      alert('エクスポートに失敗しました。');
+      alert(t.fileLoadError);
     }
   };
 
@@ -196,7 +195,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         try {
           const importObj = JSON.parse(evt.target?.result as string);
           if (!importObj.chats || !importObj.messages) {
-            alert('ファイル形式が無効です。');
+            alert(t.fileLoadError);
             return;
           }
           await db.transaction('rw', [db.chats, db.messages], async () => {
@@ -204,21 +203,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             for (const message of importObj.messages) await db.messages.put(message);
           });
           await store.loadChats();
-          alert('インポートが完了しました。');
+          alert(t.copied);
         } catch (_) {
-          alert('解析エラー。');
+          alert(t.fileLoadError);
         }
       };
       reader.readAsText(file);
     } catch (_) {
-      alert('ファイルの読み込みに失敗しました。');
+      alert(t.fileLoadError);
     }
   };
 
   const handleClearAll = async () => {
-    if (confirm('すべての会話データを削除しますか？')) {
+    if (confirm(t.clearAllConfirm)) {
       await store.clearAllChats();
-      alert('履歴が削除されました。');
+      alert(t.clearAllSuccess);
     }
   };
 
@@ -230,7 +229,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         <div className="flex items-center justify-between px-6 py-4 border-b border-border-light dark:border-border-dark bg-card-light/45 dark:bg-sidebar-dark/30 shrink-0">
           <div className="flex items-center space-x-2 text-gray-900 dark:text-gray-100 font-semibold text-md">
             <Settings className="w-5 h-5" />
-            <span>設定</span>
+            <span>{t.settings}</span>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer">
             <X className="w-5 h-5" />
@@ -251,7 +250,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               }`}
             >
               <Key className="w-4 h-4 shrink-0" />
-              <span className="hidden md:inline">接続設定 (API)</span>
+              <span className="hidden md:inline">{t.connections}</span>
             </button>
             <button
               onClick={() => setActiveTab('prompt')}
@@ -262,7 +261,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               }`}
             >
               <Shield className="w-4 h-4 shrink-0" />
-              <span className="hidden md:inline">システムプロンプト</span>
+              <span className="hidden md:inline">{t.systemPrompt}</span>
             </button>
             <button
               onClick={() => setActiveTab('data')}
@@ -273,7 +272,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               }`}
             >
               <Database className="w-4 h-4 shrink-0" />
-              <span className="hidden md:inline">データ管理</span>
+              <span className="hidden md:inline">{t.dataManagement}</span>
             </button>
           </div>
 
@@ -291,7 +290,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   <div className="p-3 border-b border-border-light dark:border-border-dark relative shrink-0">
                     <input
                       type="text"
-                      placeholder="プロバイダーを検索..."
+                      placeholder={t.searchProviders}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="w-full pl-8 pr-3 py-1.5 bg-card-light dark:bg-sidebar-dark text-xs border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue text-gray-900 dark:text-gray-100 placeholder-gray-400"
@@ -353,14 +352,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         <input
                           type="text"
                           required
-                          placeholder="プロバイダー名"
+                          placeholder={t.customProviderPlaceholder}
                           value={newCustomName}
                           onChange={(e) => setNewCustomName(e.target.value)}
                           className="w-full px-2 py-1 bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded text-xs focus:outline-none"
                         />
                         <input
                           type="text"
-                          placeholder="ベースURL (例: http://...)"
+                          placeholder={t.customUrlPlaceholder}
                           value={newCustomUrl}
                           onChange={(e) => setNewCustomUrl(e.target.value)}
                           className="w-full px-2 py-1 bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded text-xs focus:outline-none"
@@ -370,14 +369,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                             type="submit"
                             className="flex-1 py-1 bg-accent-blue hover:bg-accent-blue/90 text-white rounded text-[10px] font-bold cursor-pointer"
                           >
-                            保存
+                            {t.save}
                           </button>
                           <button
                             type="button"
                             onClick={() => setIsAddingCustom(false)}
                             className="flex-1 py-1 bg-gray-200 dark:bg-card-dark text-gray-700 dark:text-gray-300 rounded text-[10px] font-bold cursor-pointer"
                           >
-                            閉じる
+                            {t.close}
                           </button>
                         </div>
                       </form>
@@ -387,7 +386,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         className="w-full flex items-center justify-center space-x-1.5 px-3 py-2 border border-dashed border-border-light dark:border-border-dark hover:bg-border-light/30 dark:hover:bg-border-dark/30 text-gray-600 dark:text-gray-400 rounded-lg text-xs font-semibold cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>プロバイダーを追加</span>
+                        <span>{t.addProvider}</span>
                       </button>
                     )}
                   </div>
@@ -401,14 +400,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   <div className="flex items-center justify-between border-b border-border-light dark:border-border-dark pb-3 select-none">
                     <div className="flex items-center space-x-1.5">
                       <span className="font-bold text-gray-900 dark:text-gray-100 text-base">{activeProvider.name}</span>
-                      <span title="API接続を設定してモデルを取得します。">
+                      <span title={t.howCanIHelpSub}>
                         <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
                       </span>
                     </div>
                     
                     {/* On/Off Switch */}
                     <div className="flex items-center space-x-2">
-                      <span className="text-xs text-gray-400">{activeProvider.enabled ? '有効' : '無効'}</span>
+                      <span className="text-xs text-gray-400">{activeProvider.enabled ? t.activeStatus : t.inactiveStatus}</span>
                       <button
                         onClick={() => handleProviderConfigChange('enabled', !activeProvider.enabled)}
                         className={`w-10 h-5.5 rounded-full flex items-center p-0.5 cursor-pointer transition-colors ${
@@ -428,7 +427,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   {selectedProviderId !== 'ollama' && (
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">APIキー</label>
+                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">{t.apiKey}</label>
                         
                         {/* Get Key Link */}
                         {PROVIDER_KEY_LINKS[selectedProviderId] && (
@@ -438,7 +437,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                             rel="noopener noreferrer"
                             className="text-[10px] text-accent-blue hover:underline cursor-pointer"
                           >
-                            APIキーを取得
+                            {t.getApiKey}
                           </a>
                         )}
                       </div>
@@ -469,7 +468,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                           className="px-3.5 py-1.5 bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark hover:bg-border-light/45 dark:hover:bg-border-dark/45 text-xs font-bold rounded-lg cursor-pointer transition-colors shrink-0 flex items-center space-x-1.5"
                         >
                           {isTesting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
-                          <span>チェック</span>
+                          <span>{t.check}</span>
                         </button>
                       </div>
 
@@ -479,12 +478,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                           {testResult === 'success' ? (
                             <>
                               <Check className="w-3.5 h-3.5 text-accent-green" />
-                              <span className="text-accent-green font-medium">接続テスト成功！キーは有効です。</span>
+                              <span className="text-accent-green font-medium">{t.connectionSuccess}</span>
                             </>
                           ) : (
                             <>
                               <AlertCircle className="w-3.5 h-3.5 text-red-500" />
-                              <span className="text-red-500 font-medium">接続テスト失敗。キーまたはネットワークを確認してください。</span>
+                              <span className="text-red-500 font-medium">{t.connectionFailed}</span>
                             </>
                           )}
                         </div>
@@ -494,7 +493,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
                   {/* API Host Box */}
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">APIホスト</label>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">{t.apiHost}</label>
                     <div className="flex space-x-2">
                       <input
                         type="text"
@@ -510,13 +509,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         onClick={handleResetUrl}
                         className="px-3 py-1.5 bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark hover:bg-border-light/45 dark:hover:bg-border-dark/45 text-xs text-red-500 dark:text-red-400 font-bold rounded-lg cursor-pointer transition-colors shrink-0"
                       >
-                        リセット
+                        {t.reset}
                       </button>
                     </div>
 
                     {/* Host Compile Preview */}
                     <p className="text-[10px] text-gray-400 leading-tight">
-                      プレビュー：
+                      {t.preview}
                       <span className="font-mono bg-card-light dark:bg-sidebar-dark px-1 py-0.5 rounded ml-1 text-gray-500 dark:text-gray-300 select-all">
                         {activeProvider.baseUrl || 'Base URL empty'}
                         {activeProvider.id === 'gemini' 
@@ -531,8 +530,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   {/* CORS Proxy Override field */}
                   <div className="space-y-1">
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center">
-                      <span>CORS プロキシ URL</span>
-                      <span className="ml-1 text-[10px] text-gray-400 font-normal">(必要な場合に入力)</span>
+                      <span>{t.corsProxy}</span>
+                      <span className="ml-1 text-[10px] text-gray-400 font-normal">{t.corsProxySubtext}</span>
                     </label>
                     <input
                       type="text"
@@ -548,7 +547,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-1.5">
                         <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                          モデル
+                          {t.models}
                         </span>
                         <span className="px-1.5 py-0.5 bg-border-light/70 dark:bg-border-dark/70 text-gray-600 dark:text-gray-400 font-bold font-mono text-[10px] rounded-md">
                           {activeProvider.models.length}
@@ -574,7 +573,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                           className="px-2.5 py-1 bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark hover:bg-border-light/45 dark:hover:bg-border-dark/45 text-[11px] font-bold rounded-lg cursor-pointer transition-colors flex items-center space-x-1"
                         >
                           <RefreshCw className={`w-3 h-3 ${isFetchingModels ? 'animate-spin' : ''}`} />
-                          <span>モデルリストを取得</span>
+                          <span>{isFetchingModels ? t.fetchModelsLoading : t.fetchModels}</span>
                         </button>
                       </div>
                     </div>
@@ -585,7 +584,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         <input
                           type="text"
                           required
-                          placeholder="モデルIDを入力 (例: gpt-4o-mini)"
+                          placeholder={t.addModelPlaceholder}
                           value={newModelId}
                           onChange={(e) => setNewModelId(e.target.value)}
                           className="flex-1 px-2.5 py-1 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue"
@@ -594,7 +593,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                           type="submit"
                           className="px-3 py-1 bg-accent-blue text-white rounded-md text-xs font-bold cursor-pointer"
                         >
-                          追加
+                          {t.add}
                         </button>
                       </form>
                     )}
@@ -610,8 +609,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     {/* Grouped list of models */}
                     <div className="space-y-3.5 max-h-[170px] overflow-y-auto p-1 border border-border-light/50 dark:border-border-dark/50 rounded-xl bg-card-light/10 dark:bg-sidebar-dark/5">
                       {activeProvider.models.length === 0 ? (
-                        <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center py-6">
-                          モデルリストが空です。「モデルリストを取得」ボタンを押してロードしてください。
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center py-6 font-medium">
+                          {t.noModels}
                         </p>
                       ) : (
                         Object.entries(groupedModels).map(([groupName, mList]) => (
@@ -629,7 +628,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                   className="group flex items-center justify-between py-1 px-2 hover:bg-border-light/30 dark:hover:bg-border-dark/30 rounded-md transition-colors"
                                 >
                                   <div className="flex items-center space-x-2 truncate pr-4">
-                                    {/* Small visual brand icon mock */}
                                     <Globe className={`w-3.5 h-3.5 shrink-0 ${
                                       selectedProviderId === 'gemini' ? 'text-blue-500' :
                                       selectedProviderId === 'openai' ? 'text-accent-green' :
@@ -662,10 +660,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
             {activeTab === 'prompt' && (
               <div className="flex-1 p-6 space-y-4">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider mb-2">グローバルシステムプロンプト</h3>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider mb-2">{t.systemPrompt}</h3>
                 <div className="space-y-2">
                   <p className="text-xs text-gray-500 dark:text-gray-400 leading-normal">
-                    すべての新しいチャットスレッドのデフォルトアシスタント人格を決定します。特定のチャットで変更することも可能です。
+                    {t.globalSystemPromptText}
                   </p>
                   <textarea
                     rows={12}
@@ -683,38 +681,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 
                 {/* Theme Selection */}
                 <div className="space-y-2">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider">カラーテーマ</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider">{t.theme}</h3>
                   <div className="flex space-x-2">
-                    {(['light', 'dark', 'system'] as const).map((t) => (
+                    {(['light', 'dark', 'system'] as const).map((tVal) => (
                       <button
-                        key={t}
-                        onClick={() => store.updateSetting('theme', t)}
+                        key={tVal}
+                        onClick={() => store.updateSetting('theme', tVal)}
                         className={`flex-1 px-3 py-2 text-sm font-medium border rounded-md transition-colors cursor-pointer capitalize ${
-                          store.theme === t
+                          store.theme === tVal
                             ? 'bg-accent-blue/10 border-accent-blue text-accent-blue'
                             : 'bg-card-light dark:bg-sidebar-dark border-border-light dark:border-border-dark text-gray-700 dark:text-gray-300 hover:bg-border-light/30 dark:hover:bg-border-dark/30'
                         }`}
                       >
-                        {t === 'light' ? 'ライト' : t === 'dark' ? 'ダーク' : 'システム同期'}
+                        {tVal === 'light' ? t.themeLight : tVal === 'dark' ? t.themeDark : t.themeSystem}
                       </button>
                     ))}
                   </div>
                 </div>
 
+                {/* Language Selection */}
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider">{t.language}</h3>
+                  <select
+                    value={language}
+                    onChange={(e) => store.updateSetting('language', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:border-accent-blue dark:text-gray-100 font-medium"
+                  >
+                    <option value="ja">日本語 (Japanese)</option>
+                    <option value="en">English</option>
+                    <option value="zh">简体中文 (Simplified Chinese)</option>
+                  </select>
+                </div>
+
                 {/* Import / Export & Clear */}
                 <div className="space-y-3 border-t border-border-light dark:border-border-dark pt-4">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider">データの管理</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider">{t.dataManagement}</h3>
                   
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={handleExportData}
                       className="px-4 py-2.5 text-sm font-medium border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark text-gray-700 dark:text-gray-300 rounded-md hover:bg-border-light/30 dark:hover:bg-border-dark/30 transition-colors cursor-pointer"
                     >
-                      会話履歴のエクスポート (.json)
+                      {t.exportHistory}
                     </button>
                     
                     <label className="flex items-center justify-center px-4 py-2.5 text-sm font-medium border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark text-gray-700 dark:text-gray-300 rounded-md hover:bg-border-light/30 dark:hover:bg-border-dark/30 transition-colors cursor-pointer relative">
-                      <span>会話履歴のインポート</span>
+                      <span>{t.importHistory}</span>
                       <input
                         type="file"
                         accept=".json"
@@ -729,10 +741,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                       onClick={handleClearAll}
                       className="w-full px-4 py-2.5 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors cursor-pointer"
                     >
-                      すべてのチャット履歴を削除する
+                      {t.clearAllData}
                     </button>
-                    <p className="text-[10px] text-gray-400 mt-1 text-center">
-                      ※この操作を行うと、ブラウザ内に保存されたすべてのメッセージ・添付ファイルが完全に消去されます。
+                    <p className="text-[10px] text-gray-400 mt-1 text-center font-medium">
+                      {t.clearDataWarning}
                     </p>
                   </div>
                 </div>

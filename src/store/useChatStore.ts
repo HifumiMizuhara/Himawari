@@ -13,6 +13,7 @@ interface ChatState {
   providers: Record<string, ProviderConfig>;
   globalSystemPrompt: string;
   theme: 'light' | 'dark' | 'system';
+  language: 'ja' | 'en' | 'zh';
   
   // UI State
   sidebarOpen: boolean;
@@ -119,6 +120,7 @@ const DEFAULT_SETTINGS: Record<string, any> = {
   providers: DEFAULT_PROVIDERS,
   globalSystemPrompt: 'You are a helpful assistant.',
   theme: 'dark',
+  language: 'ja',
   activeModelId: 'gemini-1.5-flash',
   sidebarOpen: 'true',
 };
@@ -132,6 +134,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   providers: DEFAULT_PROVIDERS,
   globalSystemPrompt: 'You are a helpful assistant.',
   theme: 'dark',
+  language: 'ja',
   
   sidebarOpen: true,
   settingsOpen: false,
@@ -170,6 +173,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       providers: loadedProviders,
       globalSystemPrompt: getSetting('globalSystemPrompt'),
       theme,
+      language: getSetting('language'),
       activeModelId,
       sidebarOpen: sidebarOpenVal === 'true' || sidebarOpenVal === true,
     });

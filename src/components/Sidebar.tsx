@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useChatStore } from '../store/useChatStore';
+import { useTranslation } from '../hooks/useTranslation';
 import { type Chat } from '../services/db';
 import { 
   MessageSquare, Plus, Settings, Trash2, Edit2, Check, X, PanelLeftClose, PanelLeft, MessageCircle
@@ -7,6 +8,7 @@ import {
 
 export const Sidebar: React.FC = () => {
   const store = useChatStore();
+  const { t, language } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
 
@@ -36,7 +38,6 @@ export const Sidebar: React.FC = () => {
     }
   };
 
-  // Group chats by date helper
   const groupChats = (chats: Chat[]) => {
     const today: Chat[] = [];
     const yesterday: Chat[] = [];
@@ -69,6 +70,22 @@ export const Sidebar: React.FC = () => {
     };
   };
 
+  const getGroupName = (label: string) => {
+    if (language === 'en') {
+      if (label === '今日') return 'Today';
+      if (label === '昨日') return 'Yesterday';
+      if (label === '過去7日間') return 'Last 7 Days';
+      return 'Older';
+    }
+    if (language === 'zh') {
+      if (label === '今日') return '今天';
+      if (label === '昨日') return '昨天';
+      if (label === '過去7日間') return '过去 7 天';
+      return '更早';
+    }
+    return label;
+  };
+
   const grouped = groupChats(store.chats);
 
   if (!store.sidebarOpen) {
@@ -77,7 +94,7 @@ export const Sidebar: React.FC = () => {
         <button
           onClick={store.toggleSidebar}
           className="p-2 border border-border-light dark:border-border-dark bg-bg-light dark:bg-sidebar-dark text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 rounded-lg shadow-md cursor-pointer transition-transform duration-200 hover:scale-105"
-          title="サイドバーを開く"
+          title={t.newChat}
         >
           <PanelLeft className="w-5 h-5" />
         </button>
@@ -100,14 +117,14 @@ export const Sidebar: React.FC = () => {
           <button
             onClick={() => store.createChat()}
             className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-border-light/40 dark:hover:bg-border-dark/40 rounded-lg cursor-pointer transition-colors"
-            title="新規チャット"
+            title={t.newChat}
           >
             <Plus className="w-4 h-4" />
           </button>
           <button
             onClick={store.toggleSidebar}
             className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-border-light/40 dark:hover:bg-border-dark/40 rounded-lg cursor-pointer transition-colors"
-            title="サイドバーを閉じる"
+            title={t.close}
           >
             <PanelLeftClose className="w-4 h-4" />
           </button>
@@ -121,7 +138,7 @@ export const Sidebar: React.FC = () => {
           className="w-full flex items-center justify-center space-x-2 px-4 py-2 border border-border-light dark:border-border-dark hover:bg-border-light/30 dark:hover:bg-border-dark/30 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors cursor-pointer"
         >
           <Plus className="w-4 h-4" />
-          <span>新しいチャット</span>
+          <span>{t.newChat}</span>
         </button>
       </div>
 
@@ -130,7 +147,7 @@ export const Sidebar: React.FC = () => {
         {store.chats.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-28 text-center text-xs text-gray-400 dark:text-gray-500 px-4 space-y-1">
             <MessageCircle className="w-6 h-6 stroke-[1.5]" />
-            <p>チャット履歴がありません。</p>
+            <p>{t.noHistory}</p>
           </div>
         ) : (
           Object.entries(grouped).map(([label, items]) => {
@@ -138,7 +155,7 @@ export const Sidebar: React.FC = () => {
             return (
               <div key={label} className="space-y-1">
                 <h4 className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2">
-                  {label}
+                  {getGroupName(label)}
                 </h4>
                 <div className="space-y-0.5">
                   {items.map((chat) => {
@@ -171,7 +188,7 @@ export const Sidebar: React.FC = () => {
                           />
                         ) : (
                           <span className="flex-1 truncate pr-8 leading-tight">
-                            {chat.title}
+                            {chat.title === 'New Chat' ? t.newChat : chat.title}
                           </span>
                         )}
 
@@ -229,7 +246,7 @@ export const Sidebar: React.FC = () => {
           className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-border-light/40 dark:hover:bg-border-dark/40 rounded-lg cursor-pointer transition-colors"
         >
           <Settings className="w-4 h-4" />
-          <span className="font-medium text-xs">設定</span>
+          <span className="font-medium text-xs">{t.settings}</span>
         </button>
       </div>
 
