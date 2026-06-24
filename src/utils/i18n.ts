@@ -146,6 +146,13 @@ export const translations = {
     pdfExtractError: 'PDFのテキスト解析に失敗しました。ファイルが壊れているか、保護されている可能性があります。',
     imgLoadError: '画像の読み込みに失敗しました。',
     apiErrorPrefix: 'APIリクエストエラー',
+    providerDisabledError: 'プロバイダー {name} は有効化されていません。設定画面で有効にしてください。',
+    missingGeminiApiKeyError: 'Gemini APIキーが設定されていません。設定の接続設定画面でキーを入力してください。',
+    missingClaudeApiKeyError: 'Claude APIキーが設定されていません。設定の接続設定画面でキーを入力してください。',
+    missingBaseUrlError: '{name} のベースURLが設定されていません。',
+    apiRequestFailedError: 'APIリクエストエラー (ステータス: {status}): {details}',
+    emptyResponseBodyError: 'レスポンスボディが空です。',
+    generateResponseError: '回答の生成に失敗しました。APIキー、ネットワーク、またはCORS設定を確認してください。',
   },
   en: {
     // Settings tabs & General
@@ -292,6 +299,13 @@ export const translations = {
     pdfExtractError: 'Failed to extract text from PDF. The file may be corrupted or protected.',
     imgLoadError: 'Failed to load image.',
     apiErrorPrefix: 'API Request Error',
+    providerDisabledError: 'Provider {name} is disabled. Enable it in Settings.',
+    missingGeminiApiKeyError: 'Gemini API key is not set. Enter the key in Settings > Connections.',
+    missingClaudeApiKeyError: 'Claude API key is not set. Enter the key in Settings > Connections.',
+    missingBaseUrlError: 'Base URL is not set for {name}.',
+    apiRequestFailedError: 'API request error (status: {status}): {details}',
+    emptyResponseBodyError: 'Response body is empty.',
+    generateResponseError: 'Failed to generate a response. Check your API keys, network, or CORS settings.',
   },
   zh: {
     // Settings tabs & General
@@ -438,5 +452,12 @@ export const translations = {
     pdfExtractError: '未能从 PDF 提取文本。文件可能已损坏或受保护。',
     imgLoadError: '加载图片失败。',
     apiErrorPrefix: 'API 请求错误',
+    providerDisabledError: '服务商 {name} 未启用。请在设置中启用。',
+    missingGeminiApiKeyError: '未设置 Gemini API 密钥。请在设置 > 连接设置中输入密钥。',
+    missingClaudeApiKeyError: '未设置 Claude API 密钥。请在设置 > 连接设置中输入密钥。',
+    missingBaseUrlError: '未设置 {name} 的基准 URL。',
+    apiRequestFailedError: 'API 请求错误 (状态: {status}): {details}',
+    emptyResponseBodyError: '响应正文为空。',
+    generateResponseError: '生成回答失败。请检查 API 密钥、网络或 CORS 设置。',
   }
 };

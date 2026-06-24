@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { db, type Chat, type Message, type MessageVariant, type Attachment, type ProviderConfig, type Citation, type TokenUsage, type PromptPreset, type ModelPrice } from '../services/db';
-import { streamChatCompletion } from '../services/api';
+import { ApiError, streamChatCompletion } from '../services/api';
 import { encryptString, decryptString, type EncryptedPayload } from '../utils/crypto';
+import { translations } from '../utils/i18n';
 
 export interface SearchResult {
   chatId: string;
@@ -11,6 +12,31 @@ export interface SearchResult {
   snippet: string;
   timestamp: number;
 }
+
+const formatTranslation = (template: string, values: Record<string, string | number> = {}) =>
+  template.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? `{${key}}`));
+
+const getLocalizedErrorMessage = (error: unknown, language: ChatState['language']) => {
+  const t = translations[language] || translations.ja;
+
+  if (error instanceof ApiError) {
+    const keyByCode: Record<typeof error.code, keyof typeof translations.ja> = {
+      providerDisabled: 'providerDisabledError',
+      missingGeminiApiKey: 'missingGeminiApiKeyError',
+      missingClaudeApiKey: 'missingClaudeApiKeyError',
+      missingBaseUrl: 'missingBaseUrlError',
+      apiRequestFailed: 'apiRequestFailedError',
+      emptyResponseBody: 'emptyResponseBodyError',
+    };
+    return formatTranslation(t[keyByCode[error.code]], error.values);
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return t.generateResponseError;
+};
 
 interface ChatState {
   // Data State
@@ -857,7 +883,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         console.log('Generation aborted');
       } else {
         console.error('Error generating response:', error);
-        const errMsg = `\n\n*(Error: ${error.message || 'Failed to generate response. Please check your API keys, network, or CORS settings.'})*`;
+        const errMsg = `\n\n*(Error: ${getLocalizedErrorMessage(error, get().language)})*`;
         
         set((state) => ({
           messages: state.messages.map((m) => {
@@ -1155,7 +1181,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         console.log('Regeneration aborted');
       } else {
         console.error('Error regenerating response:', error);
-        const errMsg = `\n\n*(Error: ${error.message || 'Failed to generate response.'})*`;
+        const errMsg = `\n\n*(Error: ${getLocalizedErrorMessage(error, get().language)})*`;
         
         set((state) => ({
           messages: state.messages.map((m) => {

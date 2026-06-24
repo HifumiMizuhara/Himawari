@@ -1,5 +1,29 @@
 import { type ProviderConfig } from './db';
 
+export type ApiErrorCode =
+  | 'providerDisabled'
+  | 'missingGeminiApiKey'
+  | 'missingClaudeApiKey'
+  | 'missingBaseUrl'
+  | 'apiRequestFailed'
+  | 'emptyResponseBody';
+
+export class ApiError extends Error {
+  code: ApiErrorCode;
+  values: Record<string, string | number>;
+
+  constructor(
+    code: ApiErrorCode,
+    message: string,
+    values: Record<string, string | number> = {}
+  ) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.values = values;
+  }
+}
+
 export interface StreamParams {
   providerConfig: ProviderConfig;
   modelId: string;
@@ -136,7 +160,7 @@ export async function streamChatCompletion(
   const { providerConfig, modelId } = params;
 
   if (!providerConfig.enabled) {
-    throw new Error(`プロバイダー ${providerConfig.name} は有効化されていません。設定画面で有効にしてください。`);
+    throw new ApiError('providerDisabled', 'Provider is disabled.', { name: providerConfig.name });
   }
 
   // 1. Prepare Endpoint and Headers based on Provider
@@ -150,7 +174,7 @@ export async function streamChatCompletion(
 
   if (providerConfig.id === 'gemini') {
     if (!providerConfig.apiKey) {
-      throw new Error('Gemini APIキーが設定されていません。設定のConnections画面でキーを入力してください。');
+      throw new ApiError('missingGeminiApiKey', 'Gemini API key is missing.');
     }
 
     // Fix #15: pass API key in header (not URL) so it is not exposed to CORS proxies
@@ -187,7 +211,7 @@ export async function streamChatCompletion(
   }
   else if (providerConfig.id === 'claude') {
     if (!providerConfig.apiKey) {
-      throw new Error('Claude APIキーが設定されていません。設定のConnections画面でキーを入力してください。');
+      throw new ApiError('missingClaudeApiKey', 'Claude API key is missing.');
     }
 
     const targetUrl = 'https://api.anthropic.com/v1/messages';
@@ -243,7 +267,7 @@ export async function streamChatCompletion(
   else {
     // OpenAI, DeepSeek, Custom OpenAI-compatible endpoints
     if (!providerConfig.baseUrl) {
-      throw new Error(`${providerConfig.name} のベースURLが設定されていません。`);
+      throw new ApiError('missingBaseUrl', 'Provider base URL is missing.', { name: providerConfig.name });
     }
 
     const base = providerConfig.baseUrl.replace(/\/$/, '');
@@ -301,11 +325,14 @@ export async function streamChatCompletion(
     try {
       errText = await response.text();
     } catch (_) {}
-    throw new Error(`APIリクエストエラー (ステータス: ${response.status}): ${errText || response.statusText}`);
+    throw new ApiError('apiRequestFailed', 'API request failed.', {
+      status: response.status,
+      details: errText || response.statusText,
+    });
   }
 
   if (!response.body) {
-    throw new Error('レスポンスボディが空です。');
+    throw new ApiError('emptyResponseBody', 'Response body is empty.');
   }
 
   // 3. Read stream and trigger onChunk
