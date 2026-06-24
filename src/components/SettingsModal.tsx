@@ -272,7 +272,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-fade-in">
-      <div className="relative flex flex-col w-full max-w-4xl h-[650px] bg-card-light/95 dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans backdrop-blur-2xl">
+      <div className="relative flex flex-col w-full max-w-4xl h-[90vh] md:h-[650px] bg-card-light/95 dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans backdrop-blur-2xl">
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4.5 border-b border-border-light dark:border-border-dark bg-card-light/30 dark:bg-sidebar-dark/20 shrink-0 select-none">
@@ -351,11 +351,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           <div className="flex-1 flex overflow-hidden bg-bg-light dark:bg-bg-dark text-gray-800 dark:text-gray-100">
             
             {activeTab === 'connections' && (
-              /* Connections 2-Column pane */
-              <div className="flex-1 flex overflow-hidden">
-                
+              /* Connections 2-Column pane (stacks vertically on mobile) */
+              <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+
                 {/* Connections Column 1: Providers List (Width: 1/3) */}
-                <div className="w-64 border-r border-border-light dark:border-border-dark flex flex-col bg-card-light/10 dark:bg-sidebar-dark/10 h-full shrink-0 select-none">
+                <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-border-light dark:border-border-dark flex flex-col bg-card-light/10 dark:bg-sidebar-dark/10 h-auto max-h-44 md:max-h-full md:h-full shrink-0 select-none">
                   
                   {/* Search providers box */}
                   <div className="p-3.5 border-b border-border-light dark:border-border-dark relative shrink-0">
@@ -465,7 +465,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 </div>
 
                 {/* Connections Column 2: Provider detail Form (Width: 2/3) */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6 h-full">
+                <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 min-h-0 h-full">
                   
                   {/* Top Bar Header with switch */}
                   <div className="flex items-center justify-between border-b border-border-light dark:border-border-dark pb-4.5 select-none">
@@ -730,7 +730,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             )}
 
             {activeTab === 'prompt' && (
-              <div className="flex-1 p-6 space-y-5 overflow-y-auto">
+              <div className="flex-1 p-4 md:p-6 space-y-5 overflow-y-auto">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest select-none font-heading">{t.systemPrompt}</h3>
                 <div className="space-y-3">
                   <p className="text-xs text-gray-500 dark:text-gray-450 leading-relaxed select-none">
@@ -823,7 +823,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             )}
 
             {activeTab === 'pricing' && (
-              <div className="flex-1 p-6 space-y-5 overflow-y-auto">
+              <div className="flex-1 p-4 md:p-6 space-y-5 overflow-y-auto">
                 <div className="space-y-1.5 select-none">
                   <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest font-heading">{t.pricing}</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-450 leading-relaxed">{t.pricingDesc}</p>
@@ -887,7 +887,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             )}
 
             {activeTab === 'security' && (
-              <div className="flex-1 p-6 space-y-5 overflow-y-auto">
+              <div className="flex-1 p-4 md:p-6 space-y-5 overflow-y-auto">
                 <div className="space-y-1.5 select-none">
                   <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest font-heading">{t.security}</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-450 leading-relaxed">{t.encryptKeysDesc}</p>
@@ -940,7 +940,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             )}
 
             {activeTab === 'data' && (
-              <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+              <div className="flex-1 p-4 md:p-6 space-y-6 overflow-y-auto">
                 
                 {/* Theme Selection */}
                 <div className="space-y-3">
