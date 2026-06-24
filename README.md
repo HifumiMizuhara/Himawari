@@ -92,10 +92,21 @@ Open the printed local URL (default `http://localhost:5173`).
 |---------|-------------|
 | `npm run dev` | Start the Vite dev server with HMR |
 | `npm run build` | Type-check (`tsc -b`) and build for production |
+| `npm run deploy` | Build and publish `dist/` to the `gh-pages` branch |
 | `npm run preview` | Preview the production build locally |
 | `npm run lint` | Run ESLint over the project |
 
 The production build uses `vite-plugin-singlefile`, so `npm run build` emits a self-contained HTML file in `dist/` that you can open directly or host anywhere.
+
+### GitHub Pages deploy
+
+This project deploys through the `gh-pages` branch, not GitHub Actions:
+
+```bash
+npm run deploy
+```
+
+In GitHub repository settings, set **Pages** to **Deploy from a branch**, then choose `gh-pages` and `/ (root)`.
 
 ---
 
