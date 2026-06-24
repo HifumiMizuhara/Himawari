@@ -24,6 +24,11 @@ interface ChatState {
   init: () => Promise<void>;
   updateSetting: (key: string, value: any) => Promise<void>;
   updateProvider: (providerId: string, config: Partial<ProviderConfig>) => Promise<void>;
+  addProvider: (name: string, baseUrl: string) => Promise<void>;
+  deleteProvider: (providerId: string) => Promise<void>;
+  testProviderConnection: (providerId: string) => Promise<boolean>;
+  addModelToProvider: (providerId: string, modelId: string) => Promise<void>;
+  removeModelFromProvider: (providerId: string, modelId: string) => Promise<void>;
   fetchModelsForProvider: (providerId: string) => Promise<void>;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   setActiveModelId: (modelId: string) => void;
@@ -79,6 +84,15 @@ const DEFAULT_PROVIDERS: Record<string, ProviderConfig> = {
     baseUrl: 'https://api.deepseek.com',
     apiKey: '',
     models: ['deepseek-chat', 'deepseek-coder'],
+    corsProxy: '',
+  },
+  openrouter: {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    enabled: false,
+    baseUrl: 'https://openrouter.ai/api',
+    apiKey: '',
+    models: [],
     corsProxy: '',
   },
   ollama: {
@@ -140,12 +154,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const activeModelId = getSetting('activeModelId');
     const sidebarOpenVal = getSetting('sidebarOpen');
     
-    // Support migrating old store setups that might not have unified providers
     let loadedProviders = getSetting('providers');
     if (!loadedProviders || typeof loadedProviders !== 'object') {
       loadedProviders = DEFAULT_PROVIDERS;
     } else {
-      // Merge with default config to ensure missing keys (like deepseek or custom) are populated if needed
+      // Merge with default config to ensure missing keys are populated
       Object.keys(DEFAULT_PROVIDERS).forEach((key) => {
         if (!loadedProviders[key]) {
           loadedProviders[key] = DEFAULT_PROVIDERS[key];
@@ -190,6 +203,99 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await db.settings.put({ key: 'providers', value: currentProviders });
   },
 
+  addProvider: async (name, baseUrl) => {
+    const id = `custom_${crypto.randomUUID().slice(0, 8)}`;
+    const newProvider: ProviderConfig = {
+      id,
+      name,
+      enabled: true,
+      baseUrl,
+      apiKey: '',
+      models: [],
+      corsProxy: '',
+    };
+
+    const currentProviders = { ...get().providers };
+    currentProviders[id] = newProvider;
+
+    set({ providers: currentProviders });
+    await db.settings.put({ key: 'providers', value: currentProviders });
+  },
+
+  deleteProvider: async (providerId) => {
+    const protectedIds = ['gemini', 'openai', 'claude', 'deepseek', 'openrouter', 'ollama', 'custom'];
+    if (protectedIds.includes(providerId)) return;
+
+    const currentProviders = { ...get().providers };
+    delete currentProviders[providerId];
+
+    set({ providers: currentProviders });
+    await db.settings.put({ key: 'providers', value: currentProviders });
+  },
+
+  testProviderConnection: async (providerId) => {
+    const prov = get().providers[providerId];
+    if (!prov) return false;
+
+    let url = '';
+    let headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    const corsPrefix = prov.corsProxy ? `${prov.corsProxy.replace(/\/$/, '')}/` : '';
+
+    if (providerId === 'gemini') {
+      if (!prov.apiKey) return false;
+      url = `${corsPrefix}https://generativelanguage.googleapis.com/v1beta/models?key=${prov.apiKey}`;
+    } else if (providerId === 'ollama') {
+      url = `${corsPrefix}${prov.baseUrl.replace(/\/$/, '')}/api/tags`;
+    } else if (providerId === 'claude') {
+      if (!prov.apiKey) return false;
+      url = `${corsPrefix}https://api.anthropic.com/v1/models`;
+      headers['x-api-key'] = prov.apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+    } else {
+      // openai, deepseek, openrouter, custom
+      if (!prov.baseUrl) return false;
+      const base = prov.baseUrl.replace(/\/$/, '');
+      const path = base.includes('/v1') ? '/models' : '/v1/models';
+      url = `${corsPrefix}${base}${path}`;
+      if (prov.apiKey) {
+        headers['Authorization'] = `Bearer ${prov.apiKey}`;
+      }
+    }
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers,
+        signal: AbortSignal.timeout(5000), // 5s timeout
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('Connection test failed:', e);
+      return false;
+    }
+  },
+
+  addModelToProvider: async (providerId, modelId) => {
+    const prov = get().providers[providerId];
+    if (!prov) return;
+
+    if (prov.models.includes(modelId)) return;
+
+    const newModels = [...prov.models, modelId];
+    await get().updateProvider(providerId, { models: newModels });
+  },
+
+  removeModelFromProvider: async (providerId, modelId) => {
+    const prov = get().providers[providerId];
+    if (!prov) return;
+
+    const newModels = prov.models.filter((m) => m !== modelId);
+    await get().updateProvider(providerId, { models: newModels });
+  },
+
   fetchModelsForProvider: async (providerId: string) => {
     const prov = get().providers[providerId];
     if (!prov) return;
@@ -212,7 +318,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       headers['x-api-key'] = prov.apiKey;
       headers['anthropic-version'] = '2023-06-01';
     } else {
-      // openai, deepseek, custom
+      // openai, deepseek, openrouter, custom
       if (!prov.baseUrl) throw new Error('ベースURLが入力されていません。');
       const base = prov.baseUrl.replace(/\/$/, '');
       const path = base.includes('/v1') ? '/models' : '/v1/models';
@@ -251,7 +357,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         fetchedModels = data.data.map((m: any) => m.id);
       }
     } else {
-      // openai, deepseek, custom
+      // openai, deepseek, openrouter, custom
       if (data.data && Array.isArray(data.data)) {
         fetchedModels = data.data.map((m: any) => m.id);
       }
@@ -391,7 +497,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isGenerating: true 
     });
 
-    // 3. Find target provider config
     const activeModelId = assistantMsg.modelUsed || get().activeModelId;
     let providerConfig: ProviderConfig | undefined;
 
@@ -403,7 +508,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }
 
-    // Fallback: search in disabled ones
     if (!providerConfig) {
       for (const prov of Object.values(get().providers)) {
         if (prov.models.includes(activeModelId)) {
@@ -413,7 +517,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }
 
-    // Final fallback
     if (!providerConfig) {
       providerConfig = get().providers.custom;
     }
