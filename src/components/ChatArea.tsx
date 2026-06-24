@@ -115,10 +115,10 @@ export const ChatArea: React.FC = () => {
   };
 
   const headerDropdownPanelClass =
-    'fixed left-3 right-3 top-[6.25rem] z-[70] w-auto max-h-[calc(100dvh-7rem)] overflow-y-auto bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-2xl shadow-2xl animate-scale-up sm:absolute sm:left-0 sm:right-auto sm:top-auto sm:mt-2 sm:z-50';
+    'fixed left-3 right-3 top-[3.75rem] z-[70] w-auto max-h-[calc(100dvh-4.5rem)] overflow-y-auto bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-2xl shadow-2xl animate-scale-up md:absolute md:left-0 md:right-auto md:top-auto md:mt-2 md:z-50';
 
   const compareDropdownPanelClass =
-    'fixed left-3 right-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-[70] w-auto max-h-[calc(100dvh-8rem)] overflow-y-auto bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-xl shadow-2xl animate-scale-up sm:absolute sm:left-0 sm:right-auto sm:bottom-full sm:mb-1.5 sm:w-60 sm:max-h-[220px] sm:z-50';
+    'fixed left-3 right-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-[70] w-auto max-h-[calc(100dvh-8rem)] overflow-y-auto bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-xl shadow-2xl animate-scale-up md:absolute md:left-0 md:right-auto md:bottom-full md:mb-1.5 md:w-60 md:max-h-[220px] md:z-50';
 
   // Merge default prices with user overrides (user wins)
   const pricing: Record<string, ModelPrice> = { ...DEFAULT_MODEL_PRICING, ...store.modelPricing };
@@ -339,7 +339,7 @@ export const ChatArea: React.FC = () => {
       {/* Top Header Bar */}
       <div className="flex items-center justify-between gap-2 border-b border-border-light/80 dark:border-border-dark pr-3 md:pr-6 py-2.5 md:py-3 min-h-[57px] select-none shrink-0 pl-16 md:pl-6 bg-bg-light/80 dark:bg-bg-dark/80 backdrop-blur-md z-30">
 
-        <div className="flex flex-wrap items-center gap-2 md:gap-3 flex-1 min-w-0">
+        <div className="flex flex-nowrap md:flex-wrap items-center gap-2 md:gap-3 flex-1 min-w-0 overflow-x-auto md:overflow-visible no-scrollbar">
           {/* Model Dropdown */}
           <div className="relative shrink-0" ref={dropdownRef}>
             <button
@@ -350,12 +350,12 @@ export const ChatArea: React.FC = () => {
               className="flex items-center space-x-2 px-3.5 py-2 hover:bg-card-light dark:hover:bg-card-dark text-gray-800 dark:text-gray-200 border border-border-light/60 dark:border-border-dark/40 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
             >
               <span className={`w-2 h-2 rounded-full shadow-sm animate-pulse shrink-0 ${getProviderColor(activeModel.group)}`} />
-              <span className="font-heading truncate max-w-[110px] sm:max-w-[200px]">{activeModel.name}</span>
+              <span className="font-heading truncate max-w-[64px] sm:max-w-[200px]">{activeModel.name}</span>
               <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
             </button>
 
             {showModelDropdown && (
-              <div className={`${headerDropdownPanelClass} p-2 sm:w-[min(19rem,calc(100vw-1.5rem))] sm:max-h-[60vh]`}>
+              <div className={`${headerDropdownPanelClass} p-2 md:w-[min(19rem,calc(100vw-1.5rem))] md:max-h-[60vh]`}>
                 
                 {/* Search bar inside model selector dropdown */}
                 <div className="p-1.5 border-b border-border-light/50 dark:border-border-dark/50 relative mb-1 shrink-0">
@@ -422,7 +422,7 @@ export const ChatArea: React.FC = () => {
             </button>
             
             {showEffortDropdown && (
-              <div className={`${headerDropdownPanelClass} p-1.5 sm:w-52 sm:max-h-[320px]`}>
+              <div className={`${headerDropdownPanelClass} p-1.5 md:w-52 md:max-h-[320px]`}>
                 {getEffortOptions().map((opt) =>
                   opt.value === 'custom_input' ? (
                     customEffortVisible ? (
@@ -512,7 +512,7 @@ export const ChatArea: React.FC = () => {
               </button>
 
               {showPromptDropdown && (
-                <div className={`${headerDropdownPanelClass} p-1.5 sm:w-64 sm:max-h-[320px]`}>
+                <div className={`${headerDropdownPanelClass} p-1.5 md:w-64 md:max-h-[320px]`}>
                   {store.promptPresets.map((p) => (
                     <button
                       key={p.id}
