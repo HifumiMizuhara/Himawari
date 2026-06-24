@@ -40,6 +40,7 @@ export const translations = {
     check: 'チェック',
     newChat: '新しいチャット',
     searchProviders: 'プロバイダーを検索...',
+    providerList: 'プロバイダー一覧',
     globalSystemPromptText: 'すべての新しいチャットスレッドのデフォルトアシスタント人格を決定します。特定のチャットで変更することも可能です。',
     clearDataWarning: '※この操作を行うと、ブラウザ内に保存されたすべてのメッセージ・添付ファイルが完全に消去されます。',
     
@@ -185,6 +186,7 @@ export const translations = {
     check: 'Check',
     newChat: 'New Chat',
     searchProviders: 'Search providers...',
+    providerList: 'Providers',
     globalSystemPromptText: 'Determines the default assistant personality for all new chat threads. You can change this for specific chats.',
     clearDataWarning: '*This action will permanently delete all messages and attachments saved in the browser.',
     
@@ -330,6 +332,7 @@ export const translations = {
     check: '测试连接',
     newChat: '新建对话',
     searchProviders: '搜索服务商...',
+    providerList: '服务商列表',
     globalSystemPromptText: '确定所有新对话线程的默认助理人格。您也可以在具体对话中进行更改。',
     clearDataWarning: '*此操作将永久删除保存在浏览器中的所有消息和附件。',
     

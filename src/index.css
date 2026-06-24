@@ -70,6 +70,34 @@
   background: rgba(217, 119, 6, 0.4);
 }
 
+/* Hide scrollbar while keeping horizontal scroll (mobile control bars) */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Honor the iOS home-indicator safe area for the bottom composer */
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* Prevent iOS Safari from auto-zooming when focusing inputs <16px.
+   Only on small viewports so the compact desktop sizing is untouched. */
+@media (max-width: 640px) {
+  input[type="text"],
+  input[type="password"],
+  input[type="number"],
+  input[type="search"],
+  input[type="email"],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* Page structural resets */
 html, body, #root {
   margin: 0;

@@ -331,11 +331,11 @@ export const ChatArea: React.FC = () => {
     <div className="flex-1 flex flex-col h-full bg-bg-light dark:bg-bg-dark text-gray-800 dark:text-gray-100 relative overflow-hidden">
       
       {/* Top Header Bar */}
-      <div className="flex items-center justify-between border-b border-border-light/80 dark:border-border-dark px-6 py-3 h-[57px] select-none shrink-0 pl-20 md:pl-6 bg-bg-light/80 dark:bg-bg-dark/80 backdrop-blur-md z-30">
-        
-        <div className="flex items-center space-x-3">
+      <div className="flex items-center justify-between gap-2 border-b border-border-light/80 dark:border-border-dark pr-3 md:pr-6 py-2.5 md:py-3 min-h-[57px] select-none shrink-0 pl-16 md:pl-6 bg-bg-light/80 dark:bg-bg-dark/80 backdrop-blur-md z-30">
+
+        <div className="flex flex-wrap items-center gap-2 md:gap-3 flex-1 min-w-0">
           {/* Model Dropdown */}
-          <div className="relative" ref={dropdownRef}>
+          <div className="relative shrink-0" ref={dropdownRef}>
             <button
               onClick={() => {
                 setShowModelDropdown(!showModelDropdown);
@@ -343,13 +343,13 @@ export const ChatArea: React.FC = () => {
               }}
               className="flex items-center space-x-2 px-3.5 py-2 hover:bg-card-light dark:hover:bg-card-dark text-gray-800 dark:text-gray-200 border border-border-light/60 dark:border-border-dark/40 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
             >
-              <span className={`w-2 h-2 rounded-full shadow-sm animate-pulse ${getProviderColor(activeModel.group)}`} />
-              <span className="font-heading">{activeModel.name}</span>
-              <ChevronDown className="w-4 h-4 text-gray-400" />
+              <span className={`w-2 h-2 rounded-full shadow-sm animate-pulse shrink-0 ${getProviderColor(activeModel.group)}`} />
+              <span className="font-heading truncate max-w-[110px] sm:max-w-[200px]">{activeModel.name}</span>
+              <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
             </button>
 
             {showModelDropdown && (
-              <div className="absolute left-0 mt-2 w-76 bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-2xl shadow-2xl z-50 p-2 max-h-[350px] overflow-y-auto animate-scale-up">
+              <div className="absolute left-0 mt-2 w-[min(19rem,calc(100vw-1.5rem))] bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-2xl shadow-2xl z-50 p-2 max-h-[60vh] overflow-y-auto animate-scale-up">
                 
                 {/* Search bar inside model selector dropdown */}
                 <div className="p-1.5 border-b border-border-light/50 dark:border-border-dark/50 relative mb-1 shrink-0">
@@ -399,7 +399,7 @@ export const ChatArea: React.FC = () => {
           </div>
 
           {/* Effort Selector */}
-          <div className="relative" ref={effortDropdownRef}>
+          <div className="relative shrink-0" ref={effortDropdownRef}>
             <button
               onClick={() => {
                 setShowEffortDropdown(!showEffortDropdown);
@@ -408,10 +408,11 @@ export const ChatArea: React.FC = () => {
               }}
               className="flex items-center space-x-2 px-3.5 py-2 hover:bg-card-light dark:hover:bg-card-dark text-gray-800 dark:text-gray-200 border border-border-light/60 dark:border-border-dark/40 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
             >
-              <span className="font-heading">
-                {t.effortLabel}: {getEffortOptions().find(o => o.value === store.activeEffort)?.label || store.activeEffort}
+              <span className="font-heading whitespace-nowrap">
+                <span className="hidden sm:inline">{t.effortLabel}: </span>
+                {getEffortOptions().find(o => o.value === store.activeEffort)?.label || store.activeEffort}
               </span>
-              <ChevronDown className="w-4 h-4 text-gray-400" />
+              <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
             </button>
             
             {showEffortDropdown && (
@@ -480,20 +481,20 @@ export const ChatArea: React.FC = () => {
             <button
               onClick={() => store.setActiveWebSearch(!store.activeWebSearch)}
               title={t.webSearchTooltip}
-              className={`flex items-center space-x-2 px-3.5 py-2 border rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer ${
+              className={`flex items-center space-x-2 px-3 sm:px-3.5 py-2 border rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer shrink-0 ${
                 store.activeWebSearch
                   ? 'bg-amber-500/10 border-amber-500/50 text-amber-600 dark:text-amber-400'
                   : 'hover:bg-card-light dark:hover:bg-card-dark text-gray-800 dark:text-gray-200 border-border-light/60 dark:border-border-dark/40'
               }`}
             >
-              <Globe className="w-4 h-4" />
-              <span className="font-heading">{t.webSearchLabel}</span>
+              <Globe className="w-4 h-4 shrink-0" />
+              <span className="font-heading hidden sm:inline">{t.webSearchLabel}</span>
             </button>
           )}
 
           {/* Prompt preset picker */}
           {store.promptPresets.length > 0 && (
-            <div className="relative" ref={promptDropdownRef}>
+            <div className="relative shrink-0" ref={promptDropdownRef}>
               <button
                 onClick={() => setShowPromptDropdown(!showPromptDropdown)}
                 title={t.promptPresets}
@@ -925,7 +926,7 @@ export const ChatArea: React.FC = () => {
       </div>
 
       {/* Input container at the bottom */}
-      <div className="p-4 shrink-0 bg-transparent">
+      <div className="px-3 sm:px-4 pt-3 sm:pt-4 pb-safe shrink-0 bg-transparent">
         <div
           className={`max-w-3xl mx-auto relative flex flex-col border rounded-2xl bg-card-light/90 dark:bg-card-dark/95 shadow-xl shadow-black/5 dark:shadow-black/30 backdrop-blur-xl focus-within:border-amber-600 focus-within:ring-2 focus-within:ring-amber-500/10 transition-all duration-300 ${isDragging ? 'border-amber-500 ring-2 ring-amber-500/30' : 'border-border-light dark:border-border-dark'}`}
           onDragOver={handleDragOver}
@@ -987,7 +988,7 @@ export const ChatArea: React.FC = () => {
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={t.inputTextPlaceholder}
-              className="flex-1 px-3 py-2 bg-transparent focus:outline-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 resize-none max-h-[200px]"
+              className="flex-1 px-3 py-2 bg-transparent focus:outline-none text-base sm:text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 resize-none max-h-[200px]"
             />
 
             {store.isGenerating ? (

@@ -4,7 +4,7 @@ import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/db';
 import {
   X, Shield, Settings, Database, Eye, EyeOff, Check, AlertCircle, Search,
-  Trash2, Plus, RefreshCw, Globe, Key, HelpCircle, DollarSign, Lock, Save, FileText
+  Trash2, Plus, RefreshCw, Globe, Key, HelpCircle, DollarSign, Lock, Save, FileText, ChevronLeft
 } from 'lucide-react';
 import type { ModelPrice } from '../services/db';
 
@@ -80,6 +80,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   
   // Left Sidebar State
   const [selectedProviderId, setSelectedProviderId] = useState<string>('gemini');
+  // On mobile the connections pane is a drill-down: list first, then detail.
+  const [mobileDetailView, setMobileDetailView] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddingCustom, setIsAddingCustom] = useState(false);
   const [newCustomName, setNewCustomName] = useState('');
@@ -355,7 +357,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
 
                 {/* Connections Column 1: Providers List (Width: 1/3) */}
-                <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-border-light dark:border-border-dark flex flex-col bg-card-light/10 dark:bg-sidebar-dark/10 h-auto max-h-44 md:max-h-full md:h-full shrink-0 select-none">
+                <div className={`${mobileDetailView ? 'hidden md:flex' : 'flex'} w-full md:w-64 border-b md:border-b-0 md:border-r border-border-light dark:border-border-dark flex-col bg-card-light/10 dark:bg-sidebar-dark/10 flex-1 md:flex-none md:h-full select-none`}>
                   
                   {/* Search providers box */}
                   <div className="p-3.5 border-b border-border-light dark:border-border-dark relative shrink-0">
@@ -382,6 +384,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                             setSelectedProviderId(p.id);
                             setTestResult(null);
                             setFetchError(null);
+                            setMobileDetailView(true);
                           }}
                           className={`group flex items-center justify-between w-full px-3 py-3 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
                             isSelected
@@ -465,8 +468,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 </div>
 
                 {/* Connections Column 2: Provider detail Form (Width: 2/3) */}
-                <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 min-h-0 h-full">
-                  
+                <div className={`${mobileDetailView ? 'block' : 'hidden md:block'} flex-1 overflow-y-auto p-4 md:p-6 space-y-6 min-h-0 h-full`}>
+
+                  {/* Mobile-only back button to return to the provider list */}
+                  <button
+                    onClick={() => setMobileDetailView(false)}
+                    className="md:hidden flex items-center space-x-1.5 -mt-1 mb-1 px-2.5 py-1.5 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg cursor-pointer transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    <span>{t.providerList}</span>
+                  </button>
+
                   {/* Top Bar Header with switch */}
                   <div className="flex items-center justify-between border-b border-border-light dark:border-border-dark pb-4.5 select-none">
                     <div className="flex items-center space-x-1.5">
@@ -585,9 +597,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     </div>
 
                     {/* Host Compile Preview */}
-                    <p className="text-[10px] text-gray-400 leading-normal select-none">
+                    <p className="text-[10px] text-gray-400 leading-normal select-none break-all">
                       {t.preview}
-                      <span className="font-mono bg-card-light/50 dark:bg-sidebar-dark/60 border border-border-light/40 dark:border-border-dark/40 px-2 py-0.5 rounded-lg ml-1 text-gray-500 dark:text-gray-300 select-all font-semibold">
+                      <span className="font-mono bg-card-light/50 dark:bg-sidebar-dark/60 border border-border-light/40 dark:border-border-dark/40 px-2 py-0.5 rounded-lg ml-1 text-gray-500 dark:text-gray-300 select-all font-semibold break-all">
                         {activeProvider.baseUrl || 'Base URL empty'}
                         {activeProvider.id === 'gemini' 
                           ? '/v1beta/models/...:streamGenerateContent' 
@@ -836,25 +848,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     value={newPriceModel}
                     onChange={(e) => setNewPriceModel(e.target.value)}
                     placeholder={t.priceModelPlaceholder}
-                    className="col-span-5 px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                    className="col-span-12 sm:col-span-5 px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
                   />
                   <input
                     type="number" step="0.01"
                     value={newPriceIn}
                     onChange={(e) => setNewPriceIn(e.target.value)}
                     placeholder={t.priceInputLabel}
-                    className="col-span-3 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                    className="col-span-5 sm:col-span-3 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
                   />
                   <input
                     type="number" step="0.01"
                     value={newPriceOut}
                     onChange={(e) => setNewPriceOut(e.target.value)}
                     placeholder={t.priceOutputLabel}
-                    className="col-span-3 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                    className="col-span-5 sm:col-span-3 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
                   />
                   <button
                     onClick={handleAddPrice}
-                    className="col-span-1 flex items-center justify-center p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg cursor-pointer transition-colors"
+                    className="col-span-2 sm:col-span-1 flex items-center justify-center p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg cursor-pointer transition-colors"
                   >
                     <Plus className="w-4 h-4" />
                   </button>
