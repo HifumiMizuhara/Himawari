@@ -411,7 +411,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   keysLocked: false,
   sessionPassphrase: null,
 
-  sidebarOpen: true,
+  sidebarOpen: typeof window !== 'undefined' ? window.innerWidth >= 768 : true,
   settingsOpen: false,
   searchOpen: false,
   isGenerating: false,
