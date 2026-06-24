@@ -101,6 +101,27 @@
   }
 }
 
+/* Same mobile-Chrome flash hits other hover-revealed controls (chat list
+   rename/delete, provider/model delete buttons): they paint visible during
+   load, then `opacity-0 group-hover:opacity-100` hides them once Tailwind
+   CSS applies — and touch has no hover to bring them back. Default visible,
+   hide-then-reveal only on real hover/fine-pointer desktops. */
+.hover-action {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 768px) {
+  .hover-action {
+    opacity: 0;
+  }
+
+  .group:hover .hover-action,
+  .hover-action:focus-within,
+  .group:hover .hover-action > * {
+    opacity: 1;
+  }
+}
+
 /* Prevent iOS Safari from auto-zooming when focusing inputs <16px.
    Only on small viewports so the compact desktop sizing is untouched. */
 @media (max-width: 640px) {

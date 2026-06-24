@@ -409,7 +409,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                 e.stopPropagation();
                                 handleDeleteProvider(p.id, p.name);
                               }}
-                              className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-all z-10"
+                              className="hover-action p-1 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-all z-10"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -723,7 +723,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                   {/* Delete model from provider list */}
                                   <button
                                     onClick={() => store.removeModelFromProvider(selectedProviderId, mId)}
-                                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 text-gray-400 dark:text-gray-500 rounded-md cursor-pointer transition-all"
+                                    className="hover-action p-1 hover:text-red-500 text-gray-400 dark:text-gray-500 rounded-md cursor-pointer transition-all"
                                     title="このモデルを削除"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />

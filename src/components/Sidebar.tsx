@@ -230,7 +230,7 @@ export const Sidebar: React.FC = () => {
 
                         {/* Actions (Rename / Delete) */}
                         {!isEditing && (
-                          <div className="absolute right-2.5 opacity-0 group-hover:opacity-100 flex space-x-1.5 transition-opacity duration-200">
+                          <div className="hover-action absolute right-2.5 flex space-x-1.5 transition-opacity duration-200">
                             <button
                               onClick={(e) => handleStartRename(chat, e)}
                               className="p-1 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md cursor-pointer transition-colors"
