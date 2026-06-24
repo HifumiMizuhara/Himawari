@@ -112,6 +112,8 @@ export const ChatArea: React.FC = () => {
   const [compareStates, setCompareStates] = useState<Record<string, boolean>>({});
   const [compareDropdownOpen, setCompareDropdownOpen] = useState<string | null>(null);
   const [thinkingOpen, setThinkingOpen] = useState<Record<string, boolean>>({});
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
   
   // Model search state
   const [modelSearchQuery, setModelSearchQuery] = useState('');
@@ -394,6 +396,28 @@ export const ChatArea: React.FC = () => {
 
   const removeAttachment = (index: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleStartEdit = (messageId: string, content: string) => {
+    if (store.isGenerating) return;
+    setEditingMessageId(messageId);
+    setEditingText(content);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setEditingText('');
+  };
+
+  const handleSaveEdit = async (messageId: string, messageIndex: number) => {
+    if (!editingText.trim() || store.isGenerating) return;
+    if (messageIndex < store.messages.length - 1 && !window.confirm(t.editMessageConfirm)) {
+      return;
+    }
+
+    const nextContent = editingText;
+    handleCancelEdit();
+    await store.editUserMessage(messageId, nextContent);
   };
 
   const handleSend = async () => {
@@ -706,6 +730,7 @@ export const ChatArea: React.FC = () => {
           <div className="max-w-3xl mx-auto space-y-8 pb-10">
             {store.messages.map((msg, index) => {
               const isUser = msg.role === 'user';
+              const isEditing = isUser && editingMessageId === msg.id;
               const hasVariants = !isUser && msg.variants && msg.variants.length > 1;
               const activeIndex = msg.activeVariantIndex ?? 0;
               const totalVariants = msg.variants ? msg.variants.length : 1;
@@ -904,7 +929,67 @@ export const ChatArea: React.FC = () => {
 
                         {/* Message Content rendering */}
                         {isUser ? (
-                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                          isEditing ? (
+                            <div className="space-y-3">
+                              {msg.attachments && msg.attachments.length > 0 && (
+                                <div className="flex flex-col space-y-2">
+                                  {msg.attachments.map((att, attIdx) => (
+                                    <div key={attIdx} className="flex items-center space-x-2.5 bg-bg-light/80 dark:bg-bg-dark/80 px-3 py-2 rounded-xl border border-border-light dark:border-border-dark max-w-sm shadow-sm">
+                                      {att.type === 'image' ? (
+                                        <img src={att.content} alt={att.name} className="w-9 h-9 rounded-lg object-cover" />
+                                      ) : (
+                                        <FileText className="w-4.5 h-4.5 text-amber-600 dark:text-amber-500 shrink-0" />
+                                      )}
+                                      <div className="text-left min-w-0">
+                                        <p className="text-[11px] font-semibold truncate max-w-[200px] text-gray-800 dark:text-gray-200">{att.name}</p>
+                                        <p className="text-[9px] text-gray-400">{(att.size / 1024).toFixed(1)} KB</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                  <p className="text-[10px] text-gray-400 dark:text-gray-500">{t.attachmentsPreserved}</p>
+                                </div>
+                              )}
+
+                              <textarea
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                                    e.preventDefault();
+                                    void handleSaveEdit(msg.id, index);
+                                  }
+                                  if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    handleCancelEdit();
+                                  }
+                                }}
+                                rows={4}
+                                autoFocus
+                                className="w-full min-h-[120px] px-3 py-2 bg-white/70 dark:bg-bg-dark/60 border border-amber-500/30 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 resize-y text-gray-900 dark:text-gray-100"
+                              />
+
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[10px] text-gray-400 dark:text-gray-500">{t.editShortcutHint}</span>
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    onClick={handleCancelEdit}
+                                    className="px-3 py-1.5 rounded-lg border border-border-light dark:border-border-dark text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-500/40 transition-colors cursor-pointer"
+                                  >
+                                    {t.cancel}
+                                  </button>
+                                  <button
+                                    onClick={() => void handleSaveEdit(msg.id, index)}
+                                    disabled={!editingText.trim() || store.isGenerating}
+                                    className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-[11px] font-semibold hover:bg-amber-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    {t.saveAndRegenerate}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap">{msg.content}</p>
+                          )
                         ) : (
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
@@ -938,6 +1023,26 @@ export const ChatArea: React.FC = () => {
                     {/* Token usage / cost badge (Assistant only) */}
                     {!isUser && msg.usage && (msg.usage.inputTokens > 0 || msg.usage.outputTokens > 0) && (
                       <UsageBadge usage={msg.usage} modelId={msg.modelUsed || activeModel.id} pricing={pricing} t={t} />
+                    )}
+
+                    {isUser && msg.content && !isEditing && (
+                      <div className="flex items-center space-x-1.5 px-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 mt-1">
+                        <button
+                          onClick={() => handleStartEdit(msg.id, msg.content)}
+                          disabled={store.isGenerating}
+                          className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={t.edit}
+                        >
+                          <Pencil className="w-3 h-3" />
+                          <span>{t.edit}</span>
+                        </button>
+                        <ActionButton
+                          icon={<Copy className="w-3 h-3" />}
+                          label={t.copy}
+                          copiedLabel={t.copied}
+                          onClick={() => navigator.clipboard.writeText(msg.content)}
+                        />
+                      </div>
                     )}
 
                     {/* Bottom Action strip (Assistant only, non-empty) */}

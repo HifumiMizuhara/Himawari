@@ -38,6 +38,42 @@ const getLocalizedErrorMessage = (error: unknown, language: ChatState['language'
   return t.generateResponseError;
 };
 
+const createChatTitle = (content: string) => {
+  const rawTitle = content.trim().slice(0, 30);
+  return rawTitle ? (rawTitle + (content.length > 30 ? '...' : '')) : 'New Chat';
+};
+
+const getActiveMessageContent = (message: Message) => {
+  if (message.role === 'assistant' && message.variants && message.activeVariantIndex !== undefined) {
+    const activeVariant = message.variants[message.activeVariantIndex];
+    if (activeVariant) {
+      return activeVariant.content;
+    }
+  }
+  return message.content;
+};
+
+const buildChatContext = (messages: Message[]) =>
+  messages.map((message) => ({
+    role: message.role,
+    content: getActiveMessageContent(message),
+    attachments: message.attachments,
+  }));
+
+const findProviderForModel = (
+  providers: Record<string, ProviderConfig>,
+  modelId: string
+) => {
+  const enabledProvider = Object.values(providers).find(
+    (provider) => provider.enabled && provider.models.includes(modelId)
+  );
+  if (enabledProvider) {
+    return enabledProvider;
+  }
+
+  return Object.values(providers).find((provider) => provider.models.includes(modelId));
+};
+
 interface ChatState {
   // Data State
   chats: Chat[];
@@ -94,6 +130,7 @@ interface ChatState {
   
   // Messaging Actions
   sendMessage: (content: string, attachments?: Attachment[]) => Promise<void>;
+  editUserMessage: (messageId: string, content: string) => Promise<void>;
   regenerateResponse: (messageIndex: number, targetModelId?: string) => Promise<void>;
   switchMessageVariant: (messageId: string, variantIndex: number) => Promise<void>;
   stopGeneration: () => void;
@@ -202,7 +239,160 @@ const DEFAULT_SETTINGS: Record<string, any> = {
 
 let removeSystemThemeListener: (() => void) | null = null;
 
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>((set, get) => {
+  const streamAssistantReply = async ({
+    chatId,
+    assistantMessageId,
+    modelId,
+    contextMessages,
+    variantIndex,
+    systemPrompt,
+    temperature,
+    abortLog,
+    errorLog,
+  }: {
+    chatId: string;
+    assistantMessageId: string;
+    modelId: string;
+    contextMessages: Message[];
+    variantIndex: number;
+    systemPrompt: string;
+    temperature: number;
+    abortLog: string;
+    errorLog: string;
+  }) => {
+    const providerConfig = findProviderForModel(get().providers, modelId) || get().providers.custom;
+    const controller = new AbortController();
+    const myGenId = crypto.randomUUID();
+    set({ abortController: controller, generationId: myGenId });
+
+    const updateAssistantMessage = async (transform: (message: Message) => Message) => {
+      set((state) => ({
+        messages: state.messages.map((message) =>
+          message.id === assistantMessageId ? transform(message) : message
+        ),
+      }));
+
+      const updatedMessage = get().messages.find((message) => message.id === assistantMessageId);
+      if (updatedMessage) {
+        await db.messages.put(updatedMessage);
+      }
+    };
+
+    const updateVariant = (
+      message: Message,
+      transform: (variant: MessageVariant) => MessageVariant
+    ) => {
+      const updatedVariants = [...(message.variants || [])];
+      if (updatedVariants[variantIndex]) {
+        updatedVariants[variantIndex] = transform(updatedVariants[variantIndex]);
+      }
+      return updatedVariants;
+    };
+
+    try {
+      let accumulatedText = '';
+      let accumulatedThinking = '';
+      let accumulatedCitations: Citation[] = [];
+      let accumulatedUsage: TokenUsage | null = null;
+
+      const applyUsage = async (usage: { inputTokens: number; outputTokens: number }) => {
+        accumulatedUsage = { ...usage };
+        await updateAssistantMessage((message) => ({
+          ...message,
+          usage: accumulatedUsage!,
+          variants: updateVariant(message, (variant) => ({
+            ...variant,
+            usage: accumulatedUsage!,
+          })),
+        }));
+      };
+
+      await streamChatCompletion(
+        {
+          providerConfig,
+          modelId,
+          messages: buildChatContext(contextMessages),
+          newMessage: { content: '', attachments: [] },
+          systemPrompt,
+          temperature,
+          effort: get().activeEffort,
+          webSearch: get().activeWebSearch,
+        },
+        async (chunk) => {
+          accumulatedText += chunk;
+          await updateAssistantMessage((message) => ({
+            ...message,
+            content: accumulatedText,
+            variants: updateVariant(message, (variant) => ({
+              ...variant,
+              content: accumulatedText,
+            })),
+          }));
+        },
+        async (thinkingChunk) => {
+          accumulatedThinking += thinkingChunk;
+          await updateAssistantMessage((message) => ({
+            ...message,
+            thinking: accumulatedThinking,
+            variants: updateVariant(message, (variant) => ({
+              ...variant,
+              thinking: accumulatedThinking,
+            })),
+          }));
+        },
+        controller.signal,
+        async (citations) => {
+          for (const citation of citations) {
+            if (!accumulatedCitations.some((existing) => existing.url === citation.url)) {
+              accumulatedCitations.push(citation);
+            }
+          }
+
+          await updateAssistantMessage((message) => ({
+            ...message,
+            citations: [...accumulatedCitations],
+            variants: updateVariant(message, (variant) => ({
+              ...variant,
+              citations: [...accumulatedCitations],
+            })),
+          }));
+        },
+        applyUsage
+      );
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log(abortLog);
+      } else {
+        console.error(errorLog, error);
+        const errMsg = `\n\n*(Error: ${getLocalizedErrorMessage(error, get().language)})*`;
+
+        await updateAssistantMessage((message) => {
+          const nextContent = message.content + errMsg;
+          return {
+            ...message,
+            content: nextContent,
+            variants: updateVariant(message, (variant) => ({
+              ...variant,
+              content: nextContent,
+            })),
+          };
+        });
+      }
+    } finally {
+      if (get().generationId === myGenId) {
+        set({ isGenerating: false, abortController: null, generationId: null });
+      }
+      try {
+        await db.chats.update(chatId, { updatedAt: Date.now() });
+        await get().loadChats();
+      } catch (e) {
+        console.error('Failed to update chat metadata:', e);
+      }
+    }
+  };
+
+  return ({
   chats: [],
   messages: [],
   activeChatId: null,
@@ -645,24 +835,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
     };
 
     await db.messages.add(userMsg);
-    
-    const activeChat = get().chats.find(c => c.id === chatId);
-    if (activeChat && activeChat.title === 'New Chat') {
-      const rawTitle = content.trim().slice(0, 30);
-      const title = rawTitle ? (rawTitle + (content.length > 30 ? '...' : '')) : 'New Chat';
-      await db.chats.update(chatId, { title });
+
+    const currentChat = get().chats.find((chat) => chat.id === chatId);
+    if (currentChat && currentChat.title === 'New Chat') {
+      await db.chats.update(chatId, { title: createChatTitle(content) });
     }
-    
+
     await db.chats.update(chatId, { updatedAt: Date.now() });
     await get().loadChats();
 
     const messagesSoFar = await db.messages.where('chatId').equals(chatId).sortBy('timestamp');
     set({ messages: messagesSoFar });
 
+    const activeChat = await db.chats.get(chatId);
+
     // 2. Prepare Assistant response placeholder with initial variant
     const assistantMsgId = crypto.randomUUID();
     const activeModelId = activeChat?.modelId || get().activeModelId;
-    
+
     const initialVariant: MessageVariant = {
       id: crypto.randomUUID(),
       content: '',
@@ -684,250 +874,110 @@ export const useChatStore = create<ChatState>((set, get) => ({
     };
 
     await db.messages.add(assistantMsg);
-    
-    set({ 
+
+    set({
       messages: [...messagesSoFar, assistantMsg],
-      isGenerating: true 
+      isGenerating: true,
     });
 
-    let providerConfig: ProviderConfig | undefined;
+    await streamAssistantReply({
+      chatId,
+      assistantMessageId: assistantMsgId,
+      modelId: activeModelId,
+      contextMessages: messagesSoFar,
+      variantIndex: 0,
+      systemPrompt: activeChat?.systemPrompt || get().globalSystemPrompt,
+      temperature: activeChat?.temperature ?? 0.7,
+      abortLog: 'Generation aborted',
+      errorLog: 'Error generating response:',
+    });
+  },
 
-    // Search active model among enabled providers first
-    for (const prov of Object.values(get().providers)) {
-      if (prov.enabled && prov.models.includes(activeModelId)) {
-        providerConfig = prov;
-        break;
-      }
+  editUserMessage: async (messageId, content) => {
+    const chatId = get().activeChatId;
+    if (!chatId || get().isGenerating) return;
+
+    const messages = [...get().messages];
+    const messageIndex = messages.findIndex((message) => message.id === messageId);
+    if (messageIndex === -1) return;
+
+    const targetMessage = messages[messageIndex];
+    if (targetMessage.role !== 'user') return;
+
+    const updatedUserMessage: Message = {
+      ...targetMessage,
+      content,
+    };
+    await db.messages.put(updatedUserMessage);
+
+    const followingMessageIds = messages.slice(messageIndex + 1).map((message) => message.id);
+    if (followingMessageIds.length > 0) {
+      await db.messages.bulkDelete(followingMessageIds);
     }
 
-    if (!providerConfig) {
-      for (const prov of Object.values(get().providers)) {
-        if (prov.models.includes(activeModelId)) {
-          providerConfig = prov;
-          break;
-        }
-      }
+    const baseMessages = messages
+      .slice(0, messageIndex + 1)
+      .map((message) => (message.id === messageId ? updatedUserMessage : message));
+
+    const activeChat = await db.chats.get(chatId);
+    const firstUserMessage = messages.find((message) => message.role === 'user');
+    const previousAutoTitle = createChatTitle(targetMessage.content);
+    const shouldRetitle =
+      firstUserMessage?.id === messageId &&
+      !!activeChat &&
+      (activeChat.title === 'New Chat' || activeChat.title === previousAutoTitle);
+
+    const chatUpdates: Partial<Chat> = { updatedAt: Date.now() };
+    if (shouldRetitle) {
+      chatUpdates.title = createChatTitle(content);
     }
 
-    if (!providerConfig) {
-      providerConfig = get().providers.custom;
-    }
+    await db.chats.update(chatId, chatUpdates);
+    await get().loadChats();
 
-    const controller = new AbortController();
-    // Fix #2: generation token lets the finally block skip reset if a new generation already started
-    const myGenId = crypto.randomUUID();
-    set({ abortController: controller, generationId: myGenId });
+    const responseModelId =
+      (messages[messageIndex + 1]?.role === 'assistant' && messages[messageIndex + 1].modelUsed) ||
+      activeChat?.modelId ||
+      get().activeModelId;
 
-    try {
-      const systemPrompt = activeChat?.systemPrompt || get().globalSystemPrompt;
-      const temperature = activeChat?.temperature ?? 0.7;
+    const assistantMsgId = crypto.randomUUID();
+    const initialVariant: MessageVariant = {
+      id: crypto.randomUUID(),
+      content: '',
+      thinking: '',
+      modelUsed: responseModelId,
+      timestamp: Date.now(),
+    };
 
-      // Extract text content from variants for context if variants exist
-      const chatContext = messagesSoFar.map(m => {
-        // Use active variant content if it's an assistant message and has variants
-        let msgContent = m.content;
-        if (m.role === 'assistant' && m.variants && m.activeVariantIndex !== undefined) {
-          const activeVar = m.variants[m.activeVariantIndex];
-          if (activeVar) msgContent = activeVar.content;
-        }
-        return {
-          role: m.role,
-          content: msgContent,
-          attachments: m.attachments,
-        };
-      });
+    const assistantMsg: Message = {
+      id: assistantMsgId,
+      chatId,
+      role: 'assistant',
+      content: '',
+      thinking: '',
+      modelUsed: responseModelId,
+      timestamp: Date.now() + 1,
+      variants: [initialVariant],
+      activeVariantIndex: 0,
+    };
 
-      let accumulatedText = '';
-      let accumulatedThinking = '';
-      let accumulatedCitations: Citation[] = [];
-      let accumulatedUsage: TokenUsage | null = null;
+    await db.messages.add(assistantMsg);
+    set({
+      messages: [...baseMessages, assistantMsg],
+      isGenerating: true,
+    });
 
-      const applyUsage = async (usage: { inputTokens: number; outputTokens: number }) => {
-        accumulatedUsage = { ...usage };
-        set((state) => ({
-          messages: state.messages.map((m) => {
-            if (m.id === assistantMsgId) {
-              const updatedVariants = [...(m.variants || [])];
-              const activeIndex = m.activeVariantIndex ?? 0;
-              if (updatedVariants[activeIndex]) {
-                updatedVariants[activeIndex] = { ...updatedVariants[activeIndex], usage: accumulatedUsage! };
-              }
-              return { ...m, usage: accumulatedUsage!, variants: updatedVariants };
-            }
-            return m;
-          }),
-        }));
-        const targetMsg = get().messages.find(m => m.id === assistantMsgId);
-        if (targetMsg) {
-          await db.messages.update(assistantMsgId, { usage: accumulatedUsage!, variants: targetMsg.variants });
-        }
-      };
-
-      await streamChatCompletion(
-        {
-          providerConfig,
-          modelId: activeModelId,
-          messages: chatContext,
-          newMessage: { content, attachments },
-          systemPrompt,
-          temperature,
-          effort: get().activeEffort,
-          webSearch: get().activeWebSearch,
-        },
-        async (chunk) => {
-          accumulatedText += chunk;
-
-          set((state) => ({
-            messages: state.messages.map((m) => {
-              if (m.id === assistantMsgId) {
-                const updatedVariants = [...(m.variants || [])];
-                const activeIndex = m.activeVariantIndex ?? 0;
-                if (updatedVariants[activeIndex]) {
-                  updatedVariants[activeIndex] = {
-                    ...updatedVariants[activeIndex],
-                    content: accumulatedText,
-                  };
-                }
-                return {
-                  ...m,
-                  content: accumulatedText,
-                  variants: updatedVariants,
-                };
-              }
-              return m;
-            }),
-          }));
-
-          const targetMsg = get().messages.find(m => m.id === assistantMsgId);
-          if (targetMsg) {
-            await db.messages.update(assistantMsgId, { 
-              content: accumulatedText,
-              variants: targetMsg.variants,
-            });
-          }
-        },
-        async (thinkingChunk) => {
-          accumulatedThinking += thinkingChunk;
-
-          set((state) => ({
-            messages: state.messages.map((m) => {
-              if (m.id === assistantMsgId) {
-                const updatedVariants = [...(m.variants || [])];
-                const activeIndex = m.activeVariantIndex ?? 0;
-                if (updatedVariants[activeIndex]) {
-                  updatedVariants[activeIndex] = {
-                    ...updatedVariants[activeIndex],
-                    thinking: accumulatedThinking,
-                  };
-                }
-                return {
-                  ...m,
-                  thinking: accumulatedThinking,
-                  variants: updatedVariants,
-                };
-              }
-              return m;
-            }),
-          }));
-
-          const targetMsg = get().messages.find(m => m.id === assistantMsgId);
-          if (targetMsg) {
-            await db.messages.update(assistantMsgId, {
-              thinking: accumulatedThinking,
-              variants: targetMsg.variants,
-            });
-          }
-        },
-        controller.signal,
-        async (citations) => {
-          for (const c of citations) {
-            if (!accumulatedCitations.some(e => e.url === c.url)) {
-              accumulatedCitations.push(c);
-            }
-          }
-
-          set((state) => ({
-            messages: state.messages.map((m) => {
-              if (m.id === assistantMsgId) {
-                const updatedVariants = [...(m.variants || [])];
-                const activeIndex = m.activeVariantIndex ?? 0;
-                if (updatedVariants[activeIndex]) {
-                  updatedVariants[activeIndex] = {
-                    ...updatedVariants[activeIndex],
-                    citations: [...accumulatedCitations],
-                  };
-                }
-                return {
-                  ...m,
-                  citations: [...accumulatedCitations],
-                  variants: updatedVariants,
-                };
-              }
-              return m;
-            }),
-          }));
-
-          const targetMsg = get().messages.find(m => m.id === assistantMsgId);
-          if (targetMsg) {
-            await db.messages.update(assistantMsgId, {
-              citations: [...accumulatedCitations],
-              variants: targetMsg.variants,
-            });
-          }
-        },
-        applyUsage
-      );
-
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log('Generation aborted');
-      } else {
-        console.error('Error generating response:', error);
-        const errMsg = `\n\n*(Error: ${getLocalizedErrorMessage(error, get().language)})*`;
-        
-        set((state) => ({
-          messages: state.messages.map((m) => {
-            if (m.id === assistantMsgId) {
-              const updatedVariants = [...(m.variants || [])];
-              const activeIndex = m.activeVariantIndex ?? 0;
-              const newContent = m.content + errMsg;
-              if (updatedVariants[activeIndex]) {
-                updatedVariants[activeIndex] = {
-                  ...updatedVariants[activeIndex],
-                  content: newContent,
-                };
-              }
-              return {
-                ...m,
-                content: newContent,
-                variants: updatedVariants,
-              };
-            }
-            return m;
-          }),
-        }));
-
-        const targetMsg = get().messages.find(m => m.id === assistantMsgId);
-        if (targetMsg) {
-          await db.messages.update(assistantMsgId, { 
-            content: targetMsg.content,
-            variants: targetMsg.variants,
-          });
-        }
-      }
-    } finally {
-      // Fix #2: only reset if no newer generation has taken over
-      if (get().generationId === myGenId) {
-        set({ isGenerating: false, abortController: null, generationId: null });
-      }
-      // Fix #11: guard DB writes so errors don't escape as uncaught rejections
-      try {
-        await db.chats.update(chatId, { updatedAt: Date.now() });
-        await get().loadChats();
-      } catch (e) {
-        console.error('Failed to update chat metadata:', e);
-      }
-    }
+    await streamAssistantReply({
+      chatId,
+      assistantMessageId: assistantMsgId,
+      modelId: responseModelId,
+      contextMessages: baseMessages,
+      variantIndex: 0,
+      systemPrompt: activeChat?.systemPrompt || get().globalSystemPrompt,
+      temperature: activeChat?.temperature ?? 0.7,
+      abortLog: 'Edited message regeneration aborted',
+      errorLog: 'Error regenerating edited message response:',
+    });
   },
 
   regenerateResponse: async (messageIndex, targetModelId) => {
@@ -996,233 +1046,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     // 3. Prepare chat context up to the user message
     const messagesBefore = messages.slice(0, lastUserIndex + 1);
-    const chatContext = messagesBefore.map(m => {
-      let msgContent = m.content;
-      if (m.role === 'assistant' && m.variants && m.activeVariantIndex !== undefined) {
-        const activeVar = m.variants[m.activeVariantIndex];
-        if (activeVar) msgContent = activeVar.content;
-      }
-      return {
-        role: m.role,
-        content: msgContent,
-        attachments: m.attachments,
-      };
+    const activeChat = await db.chats.get(chatId);
+
+    await streamAssistantReply({
+      chatId,
+      assistantMessageId: assistantMsg.id,
+      modelId: modelUsed,
+      contextMessages: messagesBefore,
+      variantIndex: newActiveIndex,
+      systemPrompt: activeChat?.systemPrompt || get().globalSystemPrompt,
+      temperature: activeChat?.temperature ?? 0.7,
+      abortLog: 'Regeneration aborted',
+      errorLog: 'Error regenerating response:',
     });
-
-    let providerConfig: ProviderConfig | undefined;
-    for (const prov of Object.values(get().providers)) {
-      if (prov.enabled && prov.models.includes(modelUsed)) {
-        providerConfig = prov;
-        break;
-      }
-    }
-
-    if (!providerConfig) {
-      for (const prov of Object.values(get().providers)) {
-        if (prov.models.includes(modelUsed)) {
-          providerConfig = prov;
-          break;
-        }
-      }
-    }
-
-    if (!providerConfig) {
-      providerConfig = get().providers.custom;
-    }
-
-    const controller = new AbortController();
-    const myGenId = crypto.randomUUID();
-    set({ abortController: controller, generationId: myGenId });
-
-    try {
-      const activeChat = get().chats.find(c => c.id === chatId);
-      const systemPrompt = activeChat?.systemPrompt || get().globalSystemPrompt;
-      const temperature = activeChat?.temperature ?? 0.7;
-
-      let accumulatedText = '';
-      let accumulatedThinking = '';
-      let accumulatedCitations: Citation[] = [];
-      let accumulatedUsage: TokenUsage | null = null;
-
-      const applyUsage = async (usage: { inputTokens: number; outputTokens: number }) => {
-        accumulatedUsage = { ...usage };
-        set((state) => ({
-          messages: state.messages.map((m) => {
-            if (m.id === assistantMsg.id) {
-              const updatedVariants = [...(m.variants || [])];
-              if (updatedVariants[newActiveIndex]) {
-                updatedVariants[newActiveIndex] = { ...updatedVariants[newActiveIndex], usage: accumulatedUsage! };
-              }
-              return { ...m, usage: accumulatedUsage!, variants: updatedVariants };
-            }
-            return m;
-          }),
-        }));
-        const targetMsg = get().messages.find(m => m.id === assistantMsg.id);
-        if (targetMsg) {
-          await db.messages.update(assistantMsg.id, { usage: accumulatedUsage!, variants: targetMsg.variants });
-        }
-      };
-
-      await streamChatCompletion(
-        {
-          providerConfig,
-          modelId: modelUsed,
-          // Fix #1: include the full context (with user message); newMessage is unused by prepareContext
-          messages: chatContext,
-          newMessage: { content: '', attachments: [] },
-          systemPrompt,
-          temperature,
-          effort: get().activeEffort,
-          webSearch: get().activeWebSearch,
-        },
-        async (chunk) => {
-          accumulatedText += chunk;
-
-          set((state) => ({
-            messages: state.messages.map((m) => {
-              if (m.id === assistantMsg.id) {
-                const updatedVariants = [...(m.variants || [])];
-                if (updatedVariants[newActiveIndex]) {
-                  updatedVariants[newActiveIndex] = {
-                    ...updatedVariants[newActiveIndex],
-                    content: accumulatedText,
-                  };
-                }
-                return {
-                  ...m,
-                  content: accumulatedText,
-                  variants: updatedVariants,
-                };
-              }
-              return m;
-            }),
-          }));
-
-          const targetMsg = get().messages.find(m => m.id === assistantMsg.id);
-          if (targetMsg) {
-            await db.messages.update(assistantMsg.id, {
-              content: accumulatedText,
-              variants: targetMsg.variants,
-            });
-          }
-        },
-        async (thinkingChunk) => {
-          accumulatedThinking += thinkingChunk;
-
-          set((state) => ({
-            messages: state.messages.map((m) => {
-              if (m.id === assistantMsg.id) {
-                const updatedVariants = [...(m.variants || [])];
-                if (updatedVariants[newActiveIndex]) {
-                  updatedVariants[newActiveIndex] = {
-                    ...updatedVariants[newActiveIndex],
-                    thinking: accumulatedThinking,
-                  };
-                }
-                return {
-                  ...m,
-                  thinking: accumulatedThinking,
-                  variants: updatedVariants,
-                };
-              }
-              return m;
-            }),
-          }));
-
-          const targetMsg = get().messages.find(m => m.id === assistantMsg.id);
-          if (targetMsg) {
-            await db.messages.update(assistantMsg.id, {
-              thinking: accumulatedThinking,
-              variants: targetMsg.variants,
-            });
-          }
-        },
-        controller.signal,
-        async (citations) => {
-          for (const c of citations) {
-            if (!accumulatedCitations.some(e => e.url === c.url)) {
-              accumulatedCitations.push(c);
-            }
-          }
-
-          set((state) => ({
-            messages: state.messages.map((m) => {
-              if (m.id === assistantMsg.id) {
-                const updatedVariants = [...(m.variants || [])];
-                if (updatedVariants[newActiveIndex]) {
-                  updatedVariants[newActiveIndex] = {
-                    ...updatedVariants[newActiveIndex],
-                    citations: [...accumulatedCitations],
-                  };
-                }
-                return {
-                  ...m,
-                  citations: [...accumulatedCitations],
-                  variants: updatedVariants,
-                };
-              }
-              return m;
-            }),
-          }));
-
-          const targetMsg = get().messages.find(m => m.id === assistantMsg.id);
-          if (targetMsg) {
-            await db.messages.update(assistantMsg.id, {
-              citations: [...accumulatedCitations],
-              variants: targetMsg.variants,
-            });
-          }
-        },
-        applyUsage
-      );
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log('Regeneration aborted');
-      } else {
-        console.error('Error regenerating response:', error);
-        const errMsg = `\n\n*(Error: ${getLocalizedErrorMessage(error, get().language)})*`;
-        
-        set((state) => ({
-          messages: state.messages.map((m) => {
-            if (m.id === assistantMsg.id) {
-              const updatedVariants = [...(m.variants || [])];
-              const newContent = m.content + errMsg;
-              if (updatedVariants[newActiveIndex]) {
-                updatedVariants[newActiveIndex] = {
-                  ...updatedVariants[newActiveIndex],
-                  content: newContent,
-                };
-              }
-              return {
-                ...m,
-                content: newContent,
-                variants: updatedVariants,
-              };
-            }
-            return m;
-          }),
-        }));
-
-        const targetMsg = get().messages.find(m => m.id === assistantMsg.id);
-        if (targetMsg) {
-          await db.messages.update(assistantMsg.id, {
-            content: targetMsg.content,
-            variants: targetMsg.variants,
-          });
-        }
-      }
-    } finally {
-      if (get().generationId === myGenId) {
-        set({ isGenerating: false, abortController: null, generationId: null });
-      }
-      try {
-        await db.chats.update(chatId, { updatedAt: Date.now() });
-        await get().loadChats();
-      } catch (e) {
-        console.error('Failed to update chat metadata:', e);
-      }
-    }
   },
 
   switchMessageVariant: async (messageId, variantIndex) => {
@@ -1441,4 +1277,5 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return false; // wrong passphrase (AES-GCM auth failure)
     }
   },
-}));
+  });
+});
