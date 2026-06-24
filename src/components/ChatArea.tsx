@@ -221,6 +221,8 @@ export const ChatArea: React.FC = () => {
 
   const compareDropdownPanelClass =
     'fixed left-3 right-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-[70] w-auto max-h-[calc(100dvh-8rem)] overflow-y-auto bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-xl shadow-2xl animate-scale-up md:absolute md:left-0 md:right-auto md:bottom-full md:mb-1.5 md:w-60 md:max-h-[220px] md:z-50';
+  const messageActionStripClass =
+    'message-action-strip flex items-center space-x-1.5 px-1 transition-opacity duration-200 mt-1';
 
   // Merge default prices with user overrides (user wins)
   const pricing: Record<string, ModelPrice> = { ...DEFAULT_MODEL_PRICING, ...store.modelPricing };
@@ -1026,7 +1028,7 @@ export const ChatArea: React.FC = () => {
                     )}
 
                     {isUser && msg.content && !isEditing && (
-                      <div className="flex items-center space-x-1.5 px-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 mt-1">
+                      <div className={messageActionStripClass}>
                         <button
                           onClick={() => handleStartEdit(msg.id, msg.content)}
                           disabled={store.isGenerating}
@@ -1047,7 +1049,7 @@ export const ChatArea: React.FC = () => {
 
                     {/* Bottom Action strip (Assistant only, non-empty) */}
                     {!isUser && msg.content && (
-                      <div className="flex items-center space-x-1.5 px-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 mt-1 relative">
+                      <div className={`${messageActionStripClass} relative`}>
                         <ActionButton
                           icon={<Copy className="w-3 h-3" />}
                           label={t.copy}

@@ -84,6 +84,23 @@
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
 
+/* Message actions must stay visible on touch devices; hover-only controls
+   become invisible after CSS finishes loading on mobile Chrome. */
+.message-action-strip {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 768px) {
+  .message-action-strip {
+    opacity: 0;
+  }
+
+  .group:hover .message-action-strip,
+  .message-action-strip:focus-within {
+    opacity: 1;
+  }
+}
+
 /* Prevent iOS Safari from auto-zooming when focusing inputs <16px.
    Only on small viewports so the compact desktop sizing is untouched. */
 @media (max-width: 640px) {
@@ -247,4 +264,3 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
 .dark .prose blockquote {
   color: rgba(255, 255, 255, 0.6);
 }
-
