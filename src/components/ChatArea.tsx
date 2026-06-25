@@ -104,6 +104,7 @@ export const ChatArea: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showEffortDropdown, setShowEffortDropdown] = useState(false);
   const [showPromptDropdown, setShowPromptDropdown] = useState(false);
@@ -133,16 +134,28 @@ export const ChatArea: React.FC = () => {
   const dropdownCompareRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
+
+  const handleMessagesScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    isAtBottomRef.current = distanceFromBottom < 100;
+  };
 
   // Scroll the messages list (not scrollIntoView): on mobile Chrome / iOS,
   // scrollIntoView panned the visual viewport and collapsed the address bar,
   // which pushed the header out of view — and root overflow:hidden blocked
   // scrolling back. Direct scrollTop stays contained to the list element.
+  // Only auto-scroll when user is already near the bottom so reading context
+  // mid-stream is not interrupted.
   useEffect(() => {
     if (store.messages.length === 0) return;
     const container = messagesContainerRef.current;
     if (!container) return;
-    container.scrollTop = container.scrollHeight;
+    if (isAtBottomRef.current) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [store.messages]);
 
   // Handle outside click for model and effort dropdowns
@@ -317,7 +330,9 @@ export const ChatArea: React.FC = () => {
     if (fileArray.length === 0) return;
 
     setIsUploading(true);
+    setFileUploadError(null);
     const newAttachments: Attachment[] = [];
+    const errors: string[] = [];
 
     for (const file of fileArray) {
       try {
@@ -347,8 +362,12 @@ export const ChatArea: React.FC = () => {
           });
         }
       } catch (err: any) {
-        alert(err.message || t.fileLoadError);
+        errors.push(`${file.name}: ${err.message || t.fileLoadError}`);
       }
+    }
+
+    if (errors.length > 0) {
+      setFileUploadError(errors.join('\n'));
     }
 
     setAttachments((prev) => [...prev, ...newAttachments]);
@@ -433,6 +452,7 @@ export const ChatArea: React.FC = () => {
 
     setInputText('');
     setAttachments([]);
+    isAtBottomRef.current = true;
 
     await store.sendMessage(content, currentAttachments);
   };
@@ -679,7 +699,7 @@ export const ChatArea: React.FC = () => {
       </div>
 
       {/* Main Message History Area */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6">
+      <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6">
         
         {store.messages.length === 0 ? (
           /* Empty state */
@@ -1001,8 +1021,11 @@ export const ChatArea: React.FC = () => {
                               code({ node, className, children, ...props }) {
                                 const match = /language-(\w+)/.exec(className || '');
                                 const lang = match ? match[1] : '';
-                                const codeVal = String(children).replace(/\n$/, '');
-                                const isInline = !match;
+                                const rawCode = String(children);
+                                const codeVal = rawCode.replace(/\n$/, '');
+                                // Fenced blocks (even without a language tag) always have a trailing
+                                // newline in their children; inline code does not.
+                                const isInline = !match && !rawCode.endsWith('\n');
 
                                 return !isInline ? (
                                   <CodeBlock lang={lang} code={codeVal} copyLabel={t.copy} copiedLabel={t.copied} />
@@ -1187,6 +1210,16 @@ export const ChatArea: React.FC = () => {
             </div>
           )}
 
+          {/* File upload error */}
+          {fileUploadError && (
+            <div className="flex items-start justify-between gap-2 px-4 py-2 bg-red-50 dark:bg-red-950/30 border-b border-red-200 dark:border-red-800 text-[11px] text-red-600 dark:text-red-400 rounded-t-2xl">
+              <pre className="whitespace-pre-wrap font-sans">{fileUploadError}</pre>
+              <button onClick={() => setFileUploadError(null)} className="shrink-0 mt-0.5">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Input field + upload trigger + send action button */}
           <div className="flex items-end px-4 py-3">
             <button
@@ -1312,10 +1345,10 @@ const UsageBadge: React.FC<{
 };
 
 const ActionButton: React.FC<{
-  icon: React.ReactNode; 
-  label: string; 
+  icon: React.ReactNode;
+  label: string;
   copiedLabel: string;
-  onClick: () => void 
+  onClick: () => Promise<void> | void;
 }> = ({
   icon,
   label,
@@ -1323,11 +1356,15 @@ const ActionButton: React.FC<{
   onClick,
 }) => {
   const [clicked, setClicked] = useState(false);
-  
-  const handleAction = () => {
-    onClick();
-    setClicked(true);
-    setTimeout(() => setClicked(false), 2000);
+
+  const handleAction = async () => {
+    try {
+      await onClick();
+      setClicked(true);
+      setTimeout(() => setClicked(false), 2000);
+    } catch {
+      // clipboard write failed — do not show success state
+    }
   };
 
   return (
@@ -1353,10 +1390,14 @@ const CodeBlock = ({
   copiedLabel: string 
 }) => {
   const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard write failed — do not show success state
+    }
   };
   
   return (

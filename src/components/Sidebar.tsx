@@ -33,7 +33,7 @@ export const Sidebar: React.FC = () => {
 
   const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('この会話履歴を削除しますか？')) {
+    if (confirm(t.deleteChatConfirm)) {
       await store.deleteChat(chatId);
     }
   };
