@@ -10,9 +10,8 @@ const App: React.FC = () => {
   const store = useChatStore();
 
   useEffect(() => {
-    // Load setting config and previous chats on mount
     store.init();
-  }, []);
+  }, [store]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-bg-light dark:bg-bg-dark text-gray-800 dark:text-gray-100 font-sans antialiased">

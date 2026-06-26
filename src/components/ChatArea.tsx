@@ -270,7 +270,7 @@ export const ChatArea: React.FC = () => {
 
   const getEffortOptions = () => {
     const grp = activeModel.group.toLowerCase();
-    let baseOptions = [];
+    let baseOptions: { value: string; label: string }[];
     if (grp.includes('gemini') || grp.includes('google')) {
       baseOptions = [
         { value: 'minimal', label: 'Minimal' },
@@ -361,8 +361,8 @@ export const ChatArea: React.FC = () => {
             size: file.size,
           });
         }
-      } catch (err: any) {
-        errors.push(`${file.name}: ${err.message || t.fileLoadError}`);
+      } catch (err) {
+        errors.push(`${file.name}: ${err instanceof Error ? err.message : t.fileLoadError}`);
       }
     }
 
@@ -877,7 +877,7 @@ export const ChatArea: React.FC = () => {
                               <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
                                 components={{
-                                  code({ node, className, children, ...props }) {
+                                  code({ node: _node, className, children, ...props }) {
                                     const match = /language-(\w+)/.exec(className || '');
                                     const lang = match ? match[1] : '';
                                     const codeVal = String(children).replace(/\n$/, '');
@@ -1018,7 +1018,7 @@ export const ChatArea: React.FC = () => {
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
-                              code({ node, className, children, ...props }) {
+                              code({ node: _node, className, children, ...props }) {
                                 const match = /language-(\w+)/.exec(className || '');
                                 const lang = match ? match[1] : '';
                                 const rawCode = String(children);
@@ -1328,7 +1328,7 @@ const UsageBadge: React.FC<{
   usage: TokenUsage;
   modelId: string;
   pricing: Record<string, ModelPrice>;
-  t: any;
+  t: { inLabel: string; outLabel: string; tokens: string };
 }> = ({ usage, modelId, pricing, t }) => {
   const total = usage.inputTokens + usage.outputTokens;
   const cost = computeCost(modelId, usage.inputTokens, usage.outputTokens, pricing);

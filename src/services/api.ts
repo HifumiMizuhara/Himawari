@@ -65,7 +65,7 @@ function prepareContext(params: StreamParams, format: 'openai' | 'claude' | 'gem
     }
 
     if (format === 'gemini') {
-      const parts: any[] = [];
+      const parts: object[] = [];
 
       images.forEach((img) => {
         const matches = img.content.match(/^data:(image\/\w+);base64,(.+)$/);
@@ -92,7 +92,7 @@ function prepareContext(params: StreamParams, format: 'openai' | 'claude' | 'gem
         return { role: msg.role, content: textContent };
       }
 
-      const contentArray: any[] = [];
+      const contentArray: object[] = [];
 
       images.forEach((img) => {
         const matches = img.content.match(/^data:(image\/\w+);base64,(.+)$/);
@@ -121,7 +121,7 @@ function prepareContext(params: StreamParams, format: 'openai' | 'claude' | 'gem
       return { role: msg.role, content: textContent };
     }
 
-    const contentArray: any[] = [
+    const contentArray: object[] = [
       { type: 'text', text: textContent },
       ...images.map((img) => ({
         type: 'image_url',
@@ -155,11 +155,11 @@ export async function streamChatCompletion(
   }
 
   // 1. Prepare Endpoint and Headers based on Provider
-  let url = '';
-  let headers: Record<string, string> = {
+  let url: string;
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  let body: any = {};
+  let body: Record<string, unknown>;
 
   const corsPrefix = providerConfig.corsProxy ? `${providerConfig.corsProxy.replace(/\/$/, '')}/` : '';
 
@@ -316,7 +316,9 @@ export async function streamChatCompletion(
     let errText = '';
     try {
       errText = await response.text();
-    } catch (_) {}
+    } catch {
+      // ignore read failure, use statusText
+    }
     throw new ApiError('apiRequestFailed', 'API request failed.', {
       status: response.status,
       details: errText || response.statusText,
@@ -401,7 +403,9 @@ export async function streamChatCompletion(
                 fullResponseText += textChunk;
               }
             }
-          } catch (_) {}
+          } catch {
+            // ignore parse errors in stream
+          }
         }
         else if (providerConfig.id === 'ollama') {
           try {
@@ -418,7 +422,9 @@ export async function streamChatCompletion(
                 outputTokens: parsed.eval_count || 0,
               });
             }
-          } catch (_) {}
+          } catch {
+            // ignore parse errors in stream
+          }
         }
         else if (providerConfig.id === 'claude') {
           if (trimmed.startsWith('data:')) {
@@ -449,13 +455,15 @@ export async function streamChatCompletion(
                          parsed.content_block?.type === 'web_search_tool_result') {
                 const results = parsed.content_block.content;
                 if (onCitations && Array.isArray(results)) {
-                  const cites = results
-                    .filter((r: any) => r.type === 'web_search_result' && r.url)
-                    .map((r: any) => ({ url: r.url, title: r.title }));
+                  const cites = (results as Array<{ type: string; url?: string; title?: string }>)
+                    .filter((r) => r.type === 'web_search_result' && r.url)
+                    .map((r) => ({ url: r.url!, title: r.title }));
                   if (cites.length > 0) await onCitations(cites);
                 }
               }
-            } catch (_) {}
+            } catch {
+              // ignore parse errors in stream
+            }
           }
         }
         else {
@@ -476,9 +484,9 @@ export async function streamChatCompletion(
               if (delta) {
                 // Web search citations (OpenAI / OpenRouter url_citation annotations)
                 if (onCitations && Array.isArray(delta.annotations)) {
-                  const cites = delta.annotations
-                    .filter((a: any) => a.type === 'url_citation' && a.url_citation?.url)
-                    .map((a: any) => ({ url: a.url_citation.url, title: a.url_citation.title }));
+                  const cites = (delta.annotations as Array<{ type: string; url_citation?: { url: string; title?: string } }>)
+                    .filter((a) => a.type === 'url_citation' && a.url_citation?.url)
+                    .map((a) => ({ url: a.url_citation!.url, title: a.url_citation!.title }));
                   if (cites.length > 0) await onCitations(cites);
                 }
                 if (delta.content) {
@@ -492,7 +500,9 @@ export async function streamChatCompletion(
                   await onThinkingChunk(delta.thinking);
                 }
               }
-            } catch (_) {}
+            } catch {
+              // ignore parse errors in stream
+            }
           }
         }
       }

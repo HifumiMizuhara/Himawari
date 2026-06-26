@@ -17,7 +17,7 @@ export async function extractTextFromPdf(file: File): Promise<string> {
       const page = await pdf.getPage(i);
       const textContent = await page.getTextContent();
       const pageText = textContent.items
-        .map((item: any) => item.str)
+        .map((item) => ('str' in item ? (item as { str: string }).str : ''))
         .join(' ');
       fullText += `[Page ${i}]\n${pageText}\n\n`;
     }
@@ -25,7 +25,7 @@ export async function extractTextFromPdf(file: File): Promise<string> {
     return fullText.trim();
   } catch (error) {
     console.error('Failed to extract PDF text:', error);
-    throw new Error('PDFのテキスト解析に失敗しました。ファイルが壊れているか、保護されている可能性があります。');
+    throw new Error('PDFのテキスト解析に失敗しました。ファイルが壊れているか、保護されている可能性があります。', { cause: error });
   }
 }
 

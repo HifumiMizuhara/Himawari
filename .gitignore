@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated agent / design-system artifacts
+.agent/
+.agents/
+.claude/
+design-system/

@@ -100,7 +100,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
   const activeProvider = store.providers[selectedProviderId] || store.providers.gemini;
 
-  const handleProviderConfigChange = async (key: string, value: any) => {
+  const handleProviderConfigChange = async (key: string, value: string | boolean | string[]) => {
     await store.updateProvider(selectedProviderId, { [key]: value });
   };
 
@@ -115,7 +115,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     try {
       const ok = await store.testProviderConnection(selectedProviderId);
       setTestResult(ok ? 'success' : 'failed');
-    } catch (_) {
+    } catch {
       setTestResult('failed');
     } finally {
       setIsTesting(false);
@@ -127,8 +127,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     setFetchError(null);
     try {
       await store.fetchModelsForProvider(selectedProviderId);
-    } catch (err: any) {
-      setFetchError(err.message || t.fileLoadError);
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : t.fileLoadError);
     } finally {
       setIsFetchingModels(false);
     }
@@ -223,7 +223,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (e) {
+    } catch {
       alert(t.fileLoadError);
     }
   };
@@ -255,12 +255,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           });
           await store.loadChats();
           alert(t.copied);
-        } catch (_) {
+        } catch {
           alert(t.fileLoadError);
         }
       };
       reader.readAsText(file);
-    } catch (_) {
+    } catch {
       alert(t.fileLoadError);
     }
   };

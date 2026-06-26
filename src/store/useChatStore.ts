@@ -105,7 +105,7 @@ interface ChatState {
   
   // Actions
   init: () => Promise<void>;
-  updateSetting: (key: string, value: any) => Promise<void>;
+  updateSetting: (key: string, value: unknown) => Promise<void>;
   updateProvider: (providerId: string, config: Partial<ProviderConfig>) => Promise<void>;
   addProvider: (name: string, baseUrl: string) => Promise<void>;
   deleteProvider: (providerId: string) => Promise<void>;
@@ -223,7 +223,7 @@ const DEFAULT_PROVIDERS: Record<string, ProviderConfig> = {
   },
 };
 
-const DEFAULT_SETTINGS: Record<string, any> = {
+const DEFAULT_SETTINGS: Record<string, unknown> = {
   providers: DEFAULT_PROVIDERS,
   globalSystemPrompt: 'You are a helpful assistant.',
   theme: 'system',
@@ -300,7 +300,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     try {
       let accumulatedText = '';
       let accumulatedThinking = '';
-      let accumulatedCitations: Citation[] = [];
+      const accumulatedCitations: Citation[] = [];
       let accumulatedUsage: TokenUsage | null = null;
 
       const applyUsage = async (usage: { inputTokens: number; outputTokens: number }) => {
@@ -366,8 +366,8 @@ export const useChatStore = create<ChatState>((set, get) => {
         },
         applyUsage
       );
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
         console.log(abortLog);
       } else {
         console.error(errorLog, error);
@@ -433,27 +433,26 @@ export const useChatStore = create<ChatState>((set, get) => {
   init: async () => {
     // 1. Load settings from DB
     const settingsList = await db.settings.toArray();
-    const settingsMap: Record<string, any> = {};
+    const settingsMap: Record<string, unknown> = {};
     settingsList.forEach(s => {
       settingsMap[s.key] = s.value;
     });
 
-    const getSetting = (key: string) => {
-      return settingsMap[key] !== undefined ? settingsMap[key] : DEFAULT_SETTINGS[key];
-    };
+    const getSetting = <T>(key: string): T =>
+      (settingsMap[key] !== undefined ? settingsMap[key] : DEFAULT_SETTINGS[key]) as T;
 
-    const theme = getSetting('theme');
-    const activeModelId = getSetting('activeModelId');
-    const activeEffort = getSetting('activeEffort') || 'none';
-    const activeWebSearch = getSetting('activeWebSearch') === true || getSetting('activeWebSearch') === 'true';
+    const theme = getSetting<'system' | 'light' | 'dark'>('theme');
+    const activeModelId = getSetting<string>('activeModelId');
+    const activeEffort = getSetting<string>('activeEffort') || 'none';
+    const activeWebSearch = getSetting<unknown>('activeWebSearch') === true || getSetting<unknown>('activeWebSearch') === 'true';
     // Default the sidebar closed on phones (it's an overlay there); honor any
     // explicitly stored preference on every viewport.
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    const sidebarOpenVal = settingsMap['sidebarOpen'] !== undefined
+    const sidebarRaw = settingsMap['sidebarOpen'] !== undefined
       ? settingsMap['sidebarOpen']
       : (isMobile ? 'false' : DEFAULT_SETTINGS['sidebarOpen']);
 
-    let loadedProviders = getSetting('providers');
+    let loadedProviders = getSetting<Record<string, ProviderConfig>>('providers');
     if (!loadedProviders || typeof loadedProviders !== 'object') {
       loadedProviders = DEFAULT_PROVIDERS;
     } else {
@@ -470,7 +469,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     // Read the raw stored value (not getSetting) so an absent setting stays
     // undefined and triggers browser-language detection. getSetting would fall
     // back to DEFAULT_SETTINGS.language ('ja') and the detection never ran.
-    let loadedLanguage = settingsMap['language'];
+    let loadedLanguage = settingsMap['language'] as string | undefined;
     if (!loadedLanguage) {
       const browserLang = navigator.language || '';
       if (browserLang.startsWith('ja')) {
@@ -483,9 +482,9 @@ export const useChatStore = create<ChatState>((set, get) => {
       await db.settings.put({ key: 'language', value: loadedLanguage });
     }
 
-    const promptPresets = getSetting('promptPresets') || [];
-    const modelPricing = getSetting('modelPricing') || {};
-    const keyEncryptionEnabled = getSetting('keyEncryptionEnabled') === true;
+    const promptPresets = getSetting<PromptPreset[]>('promptPresets') || [];
+    const modelPricing = getSetting<Record<string, ModelPrice>>('modelPricing') || {};
+    const keyEncryptionEnabled = getSetting<unknown>('keyEncryptionEnabled') === true;
     const encryptedKeys = settingsMap['encryptedKeys'];
     // If encryption is on and an encrypted blob exists, keys live only inside it;
     // the providers loaded from DB have empty apiKey until the user unlocks.
@@ -493,9 +492,9 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     set({
       providers: loadedProviders,
-      globalSystemPrompt: getSetting('globalSystemPrompt'),
+      globalSystemPrompt: getSetting<string>('globalSystemPrompt'),
       theme,
-      language: loadedLanguage,
+      language: loadedLanguage as ChatState['language'],
       activeModelId,
       activeEffort,
       activeWebSearch,
@@ -504,7 +503,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       keyEncryptionEnabled,
       keysLocked,
       sessionPassphrase: null,
-      sidebarOpen: sidebarOpenVal === 'true' || sidebarOpenVal === true,
+      sidebarOpen: sidebarRaw === 'true' || sidebarRaw === true,
     });
 
     // Apply theme
@@ -514,12 +513,12 @@ export const useChatStore = create<ChatState>((set, get) => {
     await get().loadChats();
   },
 
-  updateSetting: async (key: string, value: any) => {
+  updateSetting: async (key: string, value: unknown) => {
     await db.settings.put({ key, value });
-    set({ [key]: value } as any);
+    set({ [key]: value } as Partial<ChatState>);
     
     if (key === 'theme') {
-      get().setTheme(value);
+      get().setTheme(value as 'system' | 'light' | 'dark');
     }
   },
 
@@ -570,8 +569,8 @@ export const useChatStore = create<ChatState>((set, get) => {
     const prov = get().providers[providerId];
     if (!prov) return false;
 
-    let url = '';
-    let headers: Record<string, string> = {
+    let url: string;
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
 
@@ -634,8 +633,8 @@ export const useChatStore = create<ChatState>((set, get) => {
     const prov = get().providers[providerId];
     if (!prov) return;
 
-    let url = '';
-    let headers: Record<string, string> = {
+    let url: string;
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
 
@@ -670,7 +669,7 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     if (!res.ok) {
       let text = '';
-      try { text = await res.text(); } catch(_) {}
+      try { text = await res.text(); } catch { /* ignore */ }
       throw new Error(`モデル一覧の取得に失敗しました (${res.status}): ${text || res.statusText}`);
     }
 
@@ -679,22 +678,22 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     if (providerId === 'gemini') {
       if (data.models && Array.isArray(data.models)) {
-        fetchedModels = data.models
-          .map((m: any) => m.name.replace(/^models\//, ''))
-          .filter((name: string) => name.startsWith('gemini-'));
+        fetchedModels = (data.models as Array<{ name: string }>)
+          .map((m) => m.name.replace(/^models\//, ''))
+          .filter((name) => name.startsWith('gemini-'));
       }
     } else if (providerId === 'ollama') {
       if (data.models && Array.isArray(data.models)) {
-        fetchedModels = data.models.map((m: any) => m.name);
+        fetchedModels = (data.models as Array<{ name: string }>).map((m) => m.name);
       }
     } else if (providerId === 'claude') {
       if (data.data && Array.isArray(data.data)) {
-        fetchedModels = data.data.map((m: any) => m.id);
+        fetchedModels = (data.data as Array<{ id: string }>).map((m) => m.id);
       }
     } else {
       // openai, deepseek, openrouter, custom
       if (data.data && Array.isArray(data.data)) {
-        fetchedModels = data.data.map((m: any) => m.id);
+        fetchedModels = (data.data as Array<{ id: string }>).map((m) => m.id);
       }
     }
 

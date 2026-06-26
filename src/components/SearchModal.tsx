@@ -19,20 +19,19 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
     inputRef.current?.focus();
   }, []);
 
-  // Debounced search
+  // Debounced search — avoid synchronous setState in effect body
+  const displayResults = query.trim() ? results : [];
+
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
-    setLoading(true);
     const handle = setTimeout(async () => {
+      if (!query.trim()) return;
+      setLoading(true);
       const res = await store.searchMessages(query);
       setResults(res);
       setLoading(false);
     }, 200);
     return () => clearTimeout(handle);
-  }, [query]);
+  }, [query, store]);
 
   const handleSelect = async (chatId: string) => {
     await store.selectChat(chatId);
@@ -93,13 +92,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
             </div>
           ) : loading ? (
             <div className="py-16 text-center text-xs text-gray-400 select-none">…</div>
-          ) : results.length === 0 ? (
+          ) : displayResults.length === 0 ? (
             <div className="py-16 text-center text-xs text-gray-400 dark:text-gray-500 select-none">
               {t.searchNoResults}
             </div>
           ) : (
             <div className="space-y-1">
-              {results.map((r) => (
+              {displayResults.map((r) => (
                 <button
                   key={r.messageId}
                   onClick={() => handleSelect(r.chatId)}

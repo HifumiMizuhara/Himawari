@@ -18,7 +18,7 @@ export const Sidebar: React.FC = () => {
     setEditTitle(chat.title);
   };
 
-  const handleSaveRename = async (chatId: string, e: React.MouseEvent) => {
+  const handleSaveRename = async (chatId: string, e: React.SyntheticEvent) => {
     e.stopPropagation();
     if (editTitle.trim()) {
       await store.renameChat(chatId, editTitle.trim());
@@ -26,7 +26,7 @@ export const Sidebar: React.FC = () => {
     setEditingId(null);
   };
 
-  const handleCancelRename = (e: React.MouseEvent) => {
+  const handleCancelRename = (e: React.SyntheticEvent) => {
     e.stopPropagation();
     setEditingId(null);
   };
@@ -216,8 +216,8 @@ export const Sidebar: React.FC = () => {
                             value={editTitle}
                             onChange={(e) => setEditTitle(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSaveRename(chat.id, e as any);
-                              if (e.key === 'Escape') handleCancelRename(e as any);
+                              if (e.key === 'Enter') handleSaveRename(chat.id, e);
+                              if (e.key === 'Escape') handleCancelRename(e);
                             }}
                             autoFocus
                             className="flex-1 min-w-0 bg-transparent border-b border-amber-500 focus:outline-none text-gray-900 dark:text-gray-100 text-sm py-0.5 font-normal"
