@@ -183,6 +183,17 @@ export const translations = {
     apiRequestFailedError: 'APIリクエストエラー (ステータス: {status}): {details}',
     emptyResponseBodyError: 'レスポンスボディが空です。',
     generateResponseError: '回答の生成に失敗しました。APIキー、ネットワーク、またはCORS設定を確認してください。',
+
+    // Folders
+    folders: 'フォルダ',
+    newFolder: '新しいフォルダ',
+    renameFolder: 'フォルダ名を変更',
+    deleteFolder: 'フォルダを削除',
+    deleteFolderConfirm: 'このフォルダを削除しますか？中のチャットは「未分類」に移動します。',
+    moveToFolder: 'フォルダに移動',
+    removeFromFolder: 'フォルダから外す',
+    uncategorized: '未分類',
+    folderNamePlaceholder: 'フォルダ名...',
   },
   en: {
     // Settings tabs & General
@@ -366,6 +377,17 @@ export const translations = {
     apiRequestFailedError: 'API request error (status: {status}): {details}',
     emptyResponseBodyError: 'Response body is empty.',
     generateResponseError: 'Failed to generate a response. Check your API keys, network, or CORS settings.',
+
+    // Folders
+    folders: 'Folders',
+    newFolder: 'New Folder',
+    renameFolder: 'Rename folder',
+    deleteFolder: 'Delete folder',
+    deleteFolderConfirm: 'Delete this folder? Chats inside will be moved to "Uncategorized".',
+    moveToFolder: 'Move to folder',
+    removeFromFolder: 'Remove from folder',
+    uncategorized: 'Uncategorized',
+    folderNamePlaceholder: 'Folder name...',
   },
   zh: {
     // Settings tabs & General
@@ -549,5 +571,16 @@ export const translations = {
     apiRequestFailedError: 'API 请求错误 (状态: {status}): {details}',
     emptyResponseBodyError: '响应正文为空。',
     generateResponseError: '生成回答失败。请检查 API 密钥、网络或 CORS 设置。',
+
+    // Folders
+    folders: '文件夹',
+    newFolder: '新建文件夹',
+    renameFolder: '重命名文件夹',
+    deleteFolder: '删除文件夹',
+    deleteFolderConfirm: '确定删除此文件夹吗？其中的对话将移至"未分类"。',
+    moveToFolder: '移动到文件夹',
+    removeFromFolder: '从文件夹移除',
+    uncategorized: '未分类',
+    folderNamePlaceholder: '文件夹名称...',
   }
 };

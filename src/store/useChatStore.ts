@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db, type Chat, type Message, type MessageVariant, type Attachment, type ProviderConfig, type Citation, type TokenUsage, type PromptPreset, type ModelPrice } from '../services/db';
+import { db, type Chat, type Message, type MessageVariant, type Attachment, type ProviderConfig, type Citation, type TokenUsage, type PromptPreset, type ModelPrice, type Folder } from '../services/db';
 import { ApiError, streamChatCompletion } from '../services/api';
 import { buildApiUrl, migrateProviderModels, replaceRetiredModel, stripProviderKeys } from '../utils/providerCompatibility';
 import { encryptString, decryptString, type EncryptedPayload } from '../utils/crypto';
@@ -102,6 +102,7 @@ interface ChatState {
   // Data State
   chats: Chat[];
   messages: Message[];
+  folders: Folder[];
   activeChatId: string | null;
   activeProviderId: string;
   activeModelId: string;
@@ -178,6 +179,13 @@ interface ChatState {
   // Pricing
   setModelPrice: (modelId: string, price: ModelPrice) => Promise<void>;
   removeModelPrice: (modelId: string) => Promise<void>;
+
+  // Folders
+  loadFolders: () => Promise<void>;
+  createFolder: (name: string) => Promise<string>;
+  renameFolder: (folderId: string, name: string) => Promise<void>;
+  deleteFolder: (folderId: string) => Promise<void>;
+  moveChatToFolder: (chatId: string, folderId: string | null) => Promise<void>;
 
   // Key encryption
   persistProviders: () => Promise<void>;
@@ -487,6 +495,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   return ({
   chats: [],
   messages: [],
+  folders: [],
   activeChatId: null,
   activeProviderId: 'gemini',
   activeModelId: 'gemini-3.5-flash',
@@ -617,6 +626,7 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     // 2. Load chats list
     await get().loadChats();
+    await get().loadFolders();
   },
 
   updateSetting: async (key: string, value: unknown) => {
@@ -870,6 +880,43 @@ export const useChatStore = create<ChatState>((set, get) => {
   loadChats: async () => {
     const chatsList = await db.chats.orderBy('updatedAt').reverse().toArray();
     set({ chats: chatsList });
+  },
+
+  loadFolders: async () => {
+    const foldersList = await db.folders.orderBy('order').toArray();
+    set({ folders: foldersList });
+  },
+
+  createFolder: async (name) => {
+    const folders = get().folders;
+    const maxOrder = folders.length > 0 ? Math.max(...folders.map(f => f.order)) : 0;
+    const newFolder: Folder = {
+      id: crypto.randomUUID(),
+      name,
+      color: '#f59e0b', // amber-500 default
+      order: maxOrder + 1,
+    };
+    await db.folders.add(newFolder);
+    await get().loadFolders();
+    return newFolder.id;
+  },
+
+  renameFolder: async (folderId, name) => {
+    await db.folders.update(folderId, { name });
+    await get().loadFolders();
+  },
+
+  deleteFolder: async (folderId) => {
+    // Move all chats in this folder to uncategorized
+    await db.chats.where('folderId').equals(folderId).modify({ folderId: undefined });
+    await db.folders.delete(folderId);
+    await get().loadFolders();
+    await get().loadChats();
+  },
+
+  moveChatToFolder: async (chatId, folderId) => {
+    await db.chats.update(chatId, { folderId: folderId ?? undefined });
+    await get().loadChats();
   },
 
   selectChat: async (chatId) => {

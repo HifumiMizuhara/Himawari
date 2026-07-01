@@ -1,5 +1,12 @@
 import Dexie, { type Table } from 'dexie';
 
+export interface Folder {
+  id: string;
+  name: string;
+  color: string;
+  order: number;
+}
+
 export interface Chat {
   id: string;
   title: string;
@@ -11,6 +18,7 @@ export interface Chat {
   updatedAt: number;
   effort?: string;
   webSearch?: boolean;
+  folderId?: string;
 }
 
 export interface Attachment {
@@ -88,6 +96,7 @@ class HimawariDatabase extends Dexie {
   chats!: Table<Chat, string>;
   messages!: Table<Message, string>;
   settings!: Table<Setting, string>;
+  folders!: Table<Folder, string>;
 
   constructor() {
     // Keep the historical IndexedDB name so existing local data remains readable.
@@ -101,6 +110,12 @@ class HimawariDatabase extends Dexie {
       chats: 'id, title, providerId, modelId, createdAt, updatedAt',
       messages: 'id, chatId, role, timestamp',
       settings: 'key',
+    });
+    this.version(3).stores({
+      chats: 'id, title, providerId, modelId, createdAt, updatedAt, folderId',
+      messages: 'id, chatId, role, timestamp',
+      settings: 'key',
+      folders: 'id, name, order',
     });
   }
 }

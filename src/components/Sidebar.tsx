@@ -1,10 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useChatStore } from '../store/useChatStore';
 import { useTranslation } from '../hooks/useTranslation';
 import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 import { type Chat } from '../services/db';
 import {
-  MessageSquare, Plus, Settings, Trash2, Edit2, Check, X, PanelLeftClose, PanelLeft, MessageCircle, Search
+  MessageSquare, Plus, Settings, Trash2, Edit2, Check, X, PanelLeftClose, PanelLeft, MessageCircle, Search, FolderPlus, Folder, FolderOpen, ChevronRight, ChevronDown, MoreHorizontal
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -15,6 +15,54 @@ export const Sidebar: React.FC = () => {
   const [pendingDeleteChatId, setPendingDeleteChatId] = useState<string | null>(null);
   const deleteDialogRef = useRef<HTMLDivElement>(null);
   useDialogAccessibility(deleteDialogRef, () => setPendingDeleteChatId(null), !!pendingDeleteChatId);
+
+  // Folder state
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editFolderName, setEditFolderName] = useState('');
+  const [pendingDeleteFolderId, setPendingDeleteFolderId] = useState<string | null>(null);
+  const [folderMenuChatId, setFolderMenuChatId] = useState<string | null>(null);
+  const deleteFolderDialogRef = useRef<HTMLDivElement>(null);
+  useDialogAccessibility(deleteFolderDialogRef, () => setPendingDeleteFolderId(null), !!pendingDeleteFolderId);
+
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  };
+
+  const handleCreateFolder = async () => {
+    if (newFolderName.trim()) {
+      await store.createFolder(newFolderName.trim());
+      setNewFolderName('');
+      setCreatingFolder(false);
+    }
+  };
+
+  const handleSaveFolderRename = async (folderId: string) => {
+    if (editFolderName.trim()) {
+      await store.renameFolder(folderId, editFolderName.trim());
+    }
+    setEditingFolderId(null);
+  };
+
+  const handleMoveChatToFolder = async (chatId: string, folderId: string | null) => {
+    await store.moveChatToFolder(chatId, folderId);
+    setFolderMenuChatId(null);
+  };
+
+  // Close folder menu on outside click
+  useEffect(() => {
+    if (!folderMenuChatId) return;
+    const handler = () => setFolderMenuChatId(null);
+    const timer = setTimeout(() => document.addEventListener('click', handler), 0);
+    return () => { clearTimeout(timer); document.removeEventListener('click', handler); };
+  }, [folderMenuChatId]);
 
   const handleStartRename = (chat: Chat, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -67,7 +115,126 @@ export const Sidebar: React.FC = () => {
     ];
   };
 
-  const grouped = groupChats(store.chats);
+  const renderChatItem = (chat: Chat) => {
+    const isActive = store.activeChatId === chat.id;
+    const isEditing = editingId === chat.id;
+    const showFolderMenu = folderMenuChatId === chat.id;
+
+    return (
+      <div
+        key={chat.id}
+        className={`group relative flex items-center w-full min-h-11 rounded-xl text-xs transition-all duration-150 ${
+          isActive
+            ? 'bg-amber-500/10 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 font-semibold'
+            : 'text-gray-600 dark:text-gray-400 hover:bg-black/4 dark:hover:bg-white/4 hover:text-gray-900 dark:hover:text-gray-100'
+        }`}
+      >
+        {isEditing ? (
+          <>
+            <MessageSquare className="w-3.5 h-3.5 ml-3 mr-2.5 shrink-0 text-amber-500" />
+            <input
+              type="text"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveRename(chat.id, e);
+                if (e.key === 'Escape') handleCancelRename(e);
+              }}
+              autoFocus
+              className="flex-1 min-w-0 bg-transparent border-b border-amber-500 focus:outline-none text-gray-900 dark:text-gray-100 text-xs py-0.5 font-normal"
+            />
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => handleSelectChat(chat.id)}
+            aria-current={isActive ? 'page' : undefined}
+            className="min-h-11 w-full flex items-center px-3 pr-28 rounded-xl text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-500"
+          >
+            <MessageSquare className={`w-3.5 h-3.5 mr-2.5 shrink-0 transition-colors ${
+              isActive ? 'text-amber-500 dark:text-amber-400' : 'text-gray-400 dark:text-gray-600 group-hover:text-gray-500'
+            }`} />
+            <span className="flex-1 truncate leading-tight">
+              {chat.title === 'New Chat' ? t.newChat : chat.title}
+            </span>
+          </button>
+        )}
+
+        {!isEditing && (
+          <div className="hover-action absolute right-1.5 flex space-x-0 transition-opacity duration-150">
+            <button
+              onClick={(e) => { e.stopPropagation(); setFolderMenuChatId(showFolderMenu ? null : chat.id); }}
+              aria-label={t.moveToFolder}
+              className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-black/5 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
+            >
+              <MoreHorizontal className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => handleStartRename(chat, e)}
+              aria-label={t.rename}
+              className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-black/5 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
+            >
+              <Edit2 className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => handleDeleteChat(chat.id, e)}
+              aria-label={t.delete}
+              className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {isEditing && (
+          <div className="flex space-x-0.5 ml-1 shrink-0">
+            <button
+              onClick={(e) => handleSaveRename(chat.id, e)}
+              aria-label={t.save}
+              className="p-1 text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer"
+            >
+              <Check className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => handleCancelRename(e)}
+              aria-label={t.cancel}
+              className="p-1 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {/* Folder move dropdown */}
+        {showFolderMenu && (
+          <div className="absolute right-0 top-full z-50 mt-1 w-40 bg-card-light dark:bg-card-dark border border-border-light dark:border-border-dark rounded-xl shadow-lg py-1 animate-scale-up">
+            {store.folders.map((folder) => (
+              <button
+                key={folder.id}
+                onClick={() => handleMoveChatToFolder(chat.id, folder.id)}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-2 cursor-pointer transition-colors ${chat.folderId === folder.id ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-gray-600 dark:text-gray-300'}`}
+              >
+                <Folder className="w-3 h-3" />
+                {folder.name}
+              </button>
+            ))}
+            {chat.folderId && (
+              <button
+                onClick={() => handleMoveChatToFolder(chat.id, null)}
+                className="w-full text-left px-3 py-2 text-xs text-gray-500 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-2 cursor-pointer border-t border-border-light dark:border-border-dark transition-colors"
+              >
+                <X className="w-3 h-3" />
+                {t.removeFromFolder}
+              </button>
+            )}
+            {store.folders.length === 0 && (
+              <div className="px-3 py-2 text-xs text-gray-400 italic">{t.noHistory}</div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const closeOnMobile = () => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
@@ -137,6 +304,41 @@ export const Sidebar: React.FC = () => {
         </div>
       )}
 
+      {pendingDeleteFolderId && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div
+            ref={deleteFolderDialogRef}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-folder-dialog-title"
+            tabIndex={-1}
+            className="w-full max-w-sm rounded-2xl border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark p-5 shadow-2xl animate-scale-up"
+          >
+            <p id="delete-folder-dialog-title" className="text-sm font-semibold leading-relaxed text-gray-800 dark:text-gray-100">{t.deleteFolderConfirm}</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteFolderId(null)}
+                className="min-h-11 px-4 py-2 rounded-xl border border-border-light dark:border-border-dark text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer transition-colors"
+              >
+                {t.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const folderId = pendingDeleteFolderId;
+                  setPendingDeleteFolderId(null);
+                  await store.deleteFolder(folderId);
+                }}
+                className="min-h-11 px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-xs font-semibold text-white cursor-pointer transition-colors"
+              >
+                {t.delete}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mobile overlay backdrop */}
       <div
         onClick={store.toggleSidebar}
@@ -186,106 +388,133 @@ export const Sidebar: React.FC = () => {
 
         {/* Scrollable chat list */}
         <div className="flex-1 overflow-y-auto px-2 pt-2 pb-2 space-y-3">
-          {store.chats.length === 0 ? (
+          {/* Folder creation input */}
+          {creatingFolder && (
+            <div className="flex items-center gap-1 px-2 py-1">
+              <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateFolder();
+                  if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); }
+                }}
+                placeholder={t.folderNamePlaceholder}
+                autoFocus
+                className="flex-1 min-w-0 bg-transparent border-b border-amber-500 focus:outline-none text-gray-900 dark:text-gray-100 text-xs py-0.5"
+              />
+              <button onClick={handleCreateFolder} className="p-1 text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer"><Check className="w-3 h-3" /></button>
+              <button onClick={() => { setCreatingFolder(false); setNewFolderName(''); }} className="p-1 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer"><X className="w-3 h-3" /></button>
+            </div>
+          )}
+
+          {/* New folder button */}
+          {!creatingFolder && (
+            <button
+              onClick={() => setCreatingFolder(true)}
+              className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-500 uppercase tracking-widest cursor-pointer transition-colors"
+            >
+              <FolderPlus className="w-3 h-3" />
+              {t.newFolder}
+            </button>
+          )}
+
+          {store.chats.length === 0 && store.folders.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-36 text-center text-xs text-gray-400 dark:text-gray-500 px-4 space-y-2 select-none animate-pulse-slow">
               <MessageCircle className="w-7 h-7 stroke-[1.2] text-amber-500/40" />
               <p className="font-medium">{t.noHistory}</p>
             </div>
           ) : (
-            grouped.map(({ label, items }) => {
-              if (items.length === 0) return null;
-              return (
-                <div key={label} className="space-y-0.5">
-                  <h4 className="text-[10px] font-bold text-gray-400/60 dark:text-gray-600 uppercase tracking-widest px-3 py-1 select-none">
-                    {label}
-                  </h4>
-                  {items.map((chat) => {
-                    const isActive = store.activeChatId === chat.id;
-                    const isEditing = editingId === chat.id;
+            <>
+              {/* Folders */}
+              {store.folders.map((folder) => {
+                const folderChats = store.chats.filter(c => c.folderId === folder.id);
+                const isExpanded = expandedFolders.has(folder.id);
+                const isEditingFolder = editingFolderId === folder.id;
 
-                    return (
-                      <div
-                        key={chat.id}
-                        className={`group relative flex items-center w-full min-h-11 rounded-xl text-xs transition-all duration-150 ${
-                          isActive
-                            ? 'bg-amber-500/10 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 font-semibold'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-black/4 dark:hover:bg-white/4 hover:text-gray-900 dark:hover:text-gray-100'
-                        }`}
-                      >
-                        {isEditing ? (
-                          <>
-                            <MessageSquare className="w-3.5 h-3.5 ml-3 mr-2.5 shrink-0 text-amber-500" />
-                            <input
-                              type="text"
-                              value={editTitle}
-                              onChange={(e) => setEditTitle(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSaveRename(chat.id, e);
-                                if (e.key === 'Escape') handleCancelRename(e);
-                              }}
-                              autoFocus
-                              className="flex-1 min-w-0 bg-transparent border-b border-amber-500 focus:outline-none text-gray-900 dark:text-gray-100 text-xs py-0.5 font-normal"
-                            />
-                          </>
-                        ) : (
+                return (
+                  <div key={folder.id} className="space-y-0.5">
+                    <div className="group flex items-center min-h-9 px-2 rounded-lg hover:bg-black/4 dark:hover:bg-white/4 transition-colors">
+                      {isEditingFolder ? (
+                        <div className="flex items-center gap-1 flex-1 min-w-0">
+                          <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <input
+                            type="text"
+                            value={editFolderName}
+                            onChange={(e) => setEditFolderName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveFolderRename(folder.id);
+                              if (e.key === 'Escape') setEditingFolderId(null);
+                            }}
+                            autoFocus
+                            className="flex-1 min-w-0 bg-transparent border-b border-amber-500 focus:outline-none text-gray-900 dark:text-gray-100 text-xs py-0.5"
+                          />
+                          <button onClick={() => handleSaveFolderRename(folder.id)} className="p-1 text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer"><Check className="w-3 h-3" /></button>
+                          <button onClick={() => setEditingFolderId(null)} className="p-1 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer"><X className="w-3 h-3" /></button>
+                        </div>
+                      ) : (
+                        <>
                           <button
-                            type="button"
-                            onClick={() => handleSelectChat(chat.id)}
-                            aria-current={isActive ? 'page' : undefined}
-                            className="min-h-11 w-full flex items-center px-3 pr-24 rounded-xl text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-500"
+                            onClick={() => toggleFolder(folder.id)}
+                            className="flex items-center gap-1.5 flex-1 min-w-0 py-1 cursor-pointer"
                           >
-                            <MessageSquare className={`w-3.5 h-3.5 mr-2.5 shrink-0 transition-colors ${
-                              isActive ? 'text-amber-500 dark:text-amber-400' : 'text-gray-400 dark:text-gray-600 group-hover:text-gray-500'
-                            }`} />
-                            <span className="flex-1 truncate leading-tight">
-                              {chat.title === 'New Chat' ? t.newChat : chat.title}
-                            </span>
+                            {isExpanded ? <ChevronDown className="w-3 h-3 text-gray-400 shrink-0" /> : <ChevronRight className="w-3 h-3 text-gray-400 shrink-0" />}
+                            {isExpanded ? <FolderOpen className="w-3.5 h-3.5 text-amber-500 shrink-0" /> : <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                            <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 truncate">{folder.name}</span>
+                            <span className="text-[9px] text-gray-400 dark:text-gray-600 ml-1">{folderChats.length}</span>
                           </button>
-                        )}
-
-                        {!isEditing && (
-                          <div className="hover-action absolute right-2 flex space-x-0.5 transition-opacity duration-150">
+                          <div className="hover-action flex space-x-0.5 transition-opacity duration-150">
                             <button
-                              onClick={(e) => handleStartRename(chat, e)}
-                              aria-label={t.rename}
-                              className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-black/5 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
+                              onClick={() => { setEditingFolderId(folder.id); setEditFolderName(folder.name); }}
+                              aria-label={t.renameFolder}
+                              className="min-w-8 min-h-8 flex items-center justify-center text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-black/5 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
                             >
                               <Edit2 className="w-3 h-3" />
                             </button>
                             <button
-                              onClick={(e) => handleDeleteChat(chat.id, e)}
-                              aria-label={t.delete}
-                              className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
+                              onClick={() => setPendingDeleteFolderId(folder.id)}
+                              aria-label={t.deleteFolder}
+                              className="min-w-8 min-h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
-                        )}
-
-                        {isEditing && (
-                          <div className="flex space-x-0.5 ml-1 shrink-0">
-                            <button
-                              onClick={(e) => handleSaveRename(chat.id, e)}
-                              aria-label={t.save}
-                              className="p-1 text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer"
-                            >
-                              <Check className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={(e) => handleCancelRename(e)}
-                              aria-label={t.cancel}
-                              className="p-1 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        )}
+                        </>
+                      )}
+                    </div>
+                    {isExpanded && folderChats.length > 0 && (
+                      <div className="ml-4 space-y-0.5">
+                        {folderChats.map((chat) => renderChatItem(chat))}
                       </div>
-                    );
-                  })}
-                </div>
-              );
-            })
+                    )}
+                    {isExpanded && folderChats.length === 0 && (
+                      <div className="ml-6 text-[10px] text-gray-400 dark:text-gray-600 py-1 italic select-none">
+                        {t.noHistory}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Uncategorized chats grouped by date */}
+              {(() => {
+                const uncategorizedChats = store.chats.filter(c => !c.folderId);
+                if (uncategorizedChats.length === 0) return null;
+                const grouped = groupChats(uncategorizedChats);
+                return grouped.map(({ label, items }) => {
+                  if (items.length === 0) return null;
+                  return (
+                    <div key={label} className="space-y-0.5">
+                      <h4 className="text-[10px] font-bold text-gray-400/60 dark:text-gray-600 uppercase tracking-widest px-3 py-1 select-none">
+                        {label}
+                      </h4>
+                      {items.map((chat) => renderChatItem(chat))}
+                    </div>
+                  );
+                });
+              })()}
+            </>
           )}
         </div>
 
