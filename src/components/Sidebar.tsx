@@ -126,13 +126,13 @@ export const Sidebar: React.FC = () => {
         key={chat.id}
         className={`group relative flex items-center w-full min-h-11 rounded-xl text-xs transition-all duration-150 ${
           isActive
-            ? 'bg-amber-500/10 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 font-semibold'
-            : 'text-gray-600 dark:text-gray-400 hover:bg-black/4 dark:hover:bg-white/4 hover:text-gray-900 dark:hover:text-gray-100'
+            ? 'bg-white/90 dark:bg-white/6 text-blue-700 dark:text-sky-300 font-semibold shadow-sm'
+            : 'text-gray-600 dark:text-gray-400 hover:bg-white/70 dark:hover:bg-white/4 hover:text-gray-900 dark:hover:text-gray-100'
         }`}
       >
         {isEditing ? (
           <>
-            <MessageSquare className="w-3.5 h-3.5 ml-3 mr-2.5 shrink-0 text-amber-500" />
+            <MessageSquare className="w-3.5 h-3.5 ml-3 mr-2.5 shrink-0 text-blue-500" />
             <input
               type="text"
               value={editTitle}
@@ -142,7 +142,7 @@ export const Sidebar: React.FC = () => {
                 if (e.key === 'Escape') handleCancelRename(e);
               }}
               autoFocus
-              className="flex-1 min-w-0 bg-transparent border-b border-amber-500 focus:outline-none text-gray-900 dark:text-gray-100 text-xs py-0.5 font-normal"
+              className="flex-1 min-w-0 bg-transparent border-b border-blue-500 focus:outline-none text-gray-900 dark:text-gray-100 text-xs py-0.5 font-normal"
             />
           </>
         ) : (
@@ -150,16 +150,16 @@ export const Sidebar: React.FC = () => {
             type="button"
             onClick={() => handleSelectChat(chat.id)}
             aria-current={isActive ? 'page' : undefined}
-            className="min-h-11 w-full flex items-center px-3 pr-28 rounded-xl text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-500"
+            className="min-h-11 w-full flex items-center px-3 pr-28 rounded-xl text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-blue-500"
           >
             <MessageSquare className={`w-3.5 h-3.5 mr-2.5 shrink-0 transition-colors ${
-              isActive ? 'text-amber-500 dark:text-amber-400' : 'text-gray-400 dark:text-gray-600 group-hover:text-gray-500'
+              isActive ? 'text-blue-500 dark:text-sky-400' : 'text-gray-400 dark:text-gray-600 group-hover:text-gray-500'
             }`} />
             <span className="flex-1 truncate leading-tight">
               {chat.title === 'New Chat' ? t.newChat : chat.title}
             </span>
             {isGenerating && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0 ml-1.5" aria-hidden="true" />
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0 ml-1.5" aria-hidden="true" />
             )}
           </button>
         )}
@@ -169,14 +169,14 @@ export const Sidebar: React.FC = () => {
             <button
               onClick={(e) => { e.stopPropagation(); setFolderMenuChatId(showFolderMenu ? null : chat.id); }}
               aria-label={t.moveToFolder}
-              className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-black/5 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
+              className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
             >
               <MoreHorizontal className="w-3 h-3" />
             </button>
             <button
               onClick={(e) => handleStartRename(chat, e)}
               aria-label={t.rename}
-              className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-black/5 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
+              className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
             >
               <Edit2 className="w-3 h-3" />
             </button>
@@ -211,12 +211,12 @@ export const Sidebar: React.FC = () => {
 
         {/* Folder move dropdown */}
         {showFolderMenu && (
-          <div className="absolute right-0 top-full z-50 mt-1 w-40 bg-card-light dark:bg-card-dark border border-border-light dark:border-border-dark rounded-xl shadow-lg py-1 animate-scale-up">
+          <div className="absolute right-0 top-full z-50 mt-1 w-40 bg-card-light/98 dark:bg-card-dark/98 border border-border-light dark:border-border-dark rounded-2xl shadow-lg py-1 animate-scale-up backdrop-blur-xl">
             {store.folders.map((folder) => (
               <button
                 key={folder.id}
                 onClick={() => handleMoveChatToFolder(chat.id, folder.id)}
-                className={`w-full text-left px-3 py-2 text-xs hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-2 cursor-pointer transition-colors ${chat.folderId === folder.id ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-gray-600 dark:text-gray-300'}`}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-white/80 dark:hover:bg-white/5 flex items-center gap-2 cursor-pointer transition-colors ${chat.folderId === folder.id ? 'text-blue-600 dark:text-sky-400 font-semibold' : 'text-gray-600 dark:text-gray-300'}`}
               >
                 <Folder className="w-3 h-3" />
                 {folder.name}
@@ -258,11 +258,11 @@ export const Sidebar: React.FC = () => {
 
   if (!store.sidebarOpen) {
     return (
-      <div className="absolute left-4 top-4.5 z-40">
+      <div className="absolute left-5 top-5 z-40">
         <button
           onClick={store.toggleSidebar}
           aria-label={t.openSidebar}
-          className="min-w-11 min-h-11 flex items-center justify-center border border-border-light/70 dark:border-border-dark bg-card-light/90 dark:bg-card-dark/90 text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 rounded-xl shadow-md shadow-black/5 hover:shadow-amber-500/10 cursor-pointer transition-all duration-200 backdrop-blur-md"
+          className="gemini-chip min-w-11 min-h-11 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 rounded-2xl cursor-pointer transition-all duration-200 backdrop-blur-xl"
           title={t.openSidebar}
         >
           <PanelLeft className="w-4.5 h-4.5" />
@@ -288,7 +288,7 @@ export const Sidebar: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setPendingDeleteChatId(null)}
-                className="min-h-11 px-4 py-2 rounded-xl border border-border-light dark:border-border-dark text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer transition-colors"
+                className="min-h-11 px-4 py-2 rounded-xl border border-border-light dark:border-border-dark text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-sky-400 cursor-pointer transition-colors"
               >
                 {t.cancel}
               </button>
@@ -323,7 +323,7 @@ export const Sidebar: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setPendingDeleteFolderId(null)}
-                className="min-h-11 px-4 py-2 rounded-xl border border-border-light dark:border-border-dark text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer transition-colors"
+                className="min-h-11 px-4 py-2 rounded-xl border border-border-light dark:border-border-dark text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-sky-400 cursor-pointer transition-colors"
               >
                 {t.cancel}
               </button>
@@ -344,17 +344,14 @@ export const Sidebar: React.FC = () => {
       )}
 
       {/* Mobile overlay backdrop */}
-      <div
-        onClick={store.toggleSidebar}
-        className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
-      />
+      <div onClick={store.toggleSidebar} className="md:hidden fixed inset-0 bg-slate-950/20 backdrop-blur-sm z-40" />
 
-      <div className="fixed md:relative inset-y-0 left-0 w-66 max-w-[80vw] h-full bg-sidebar-light/97 md:bg-sidebar-light/80 dark:bg-sidebar-dark/97 md:dark:bg-sidebar-dark/85 backdrop-blur-xl border-r border-border-light/60 dark:border-border-dark flex flex-col z-50 md:z-40">
+      <div className="fixed md:relative inset-y-0 left-0 w-72 max-w-[84vw] h-full md:h-auto md:rounded-[2rem] bg-sidebar-light/92 dark:bg-sidebar-dark/88 backdrop-blur-2xl border border-white/60 dark:border-white/8 md:shadow-[0_16px_40px_rgba(148,163,184,0.16)] md:dark:shadow-[0_20px_50px_rgba(0,0,0,0.35)] flex flex-col z-50 md:z-40">
 
         {/* Sidebar Header */}
-        <div className="flex items-center justify-between px-4 py-3.5 border-b border-border-light/50 dark:border-border-dark/60 select-none shrink-0">
+        <div className="flex items-center justify-between px-4 py-4 border-b border-border-light/50 dark:border-border-dark/60 select-none shrink-0">
           <div className="flex items-center space-x-2.5">
-            <div className="relative w-7 h-7 flex items-center justify-center bg-gradient-to-tr from-amber-600 to-yellow-400 rounded-lg shadow-sm shadow-amber-500/25 border border-amber-400/20">
+            <div className="relative w-8 h-8 flex items-center justify-center bg-gradient-to-tr from-blue-500 via-violet-500 to-sky-400 rounded-xl shadow-sm shadow-blue-500/25 border border-white/40">
               <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-white fill-current" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 2.25a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75ZM12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75ZM5.106 5.106a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06Zm11.668 11.668a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06ZM2.25 12a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5H3a.75.75 0 0 1-.75-.75Zm15.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75ZM5.106 18.894a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Zm11.668-11.668a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Z" />
               </svg>
@@ -366,7 +363,7 @@ export const Sidebar: React.FC = () => {
             <button
               onClick={() => store.setSearchOpen(true)}
               aria-label={t.search}
-              className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-500 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg cursor-pointer transition-colors"
+              className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
               title={t.search}
             >
               <Search className="w-4 h-4" />
@@ -374,7 +371,7 @@ export const Sidebar: React.FC = () => {
             <button
               onClick={handleNewChat}
               aria-label={t.newChat}
-              className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-500 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg cursor-pointer transition-colors"
+              className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
               title={t.newChat}
             >
               <Plus className="w-4 h-4" />
@@ -382,7 +379,7 @@ export const Sidebar: React.FC = () => {
             <button
               onClick={store.toggleSidebar}
               aria-label={t.close}
-              className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-500 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg cursor-pointer transition-colors"
+              className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
               title={t.close}
             >
               <PanelLeftClose className="w-4 h-4" />
@@ -391,11 +388,11 @@ export const Sidebar: React.FC = () => {
         </div>
 
         {/* Scrollable chat list */}
-        <div className="flex-1 overflow-y-auto px-2 pt-2 pb-2 space-y-3">
+        <div className="flex-1 overflow-y-auto px-2.5 pt-3 pb-3 space-y-3">
           {/* Folder creation input */}
           {creatingFolder && (
             <div className="flex items-center gap-1 px-2 py-1">
-              <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <Folder className="w-3.5 h-3.5 text-blue-500 shrink-0" />
               <input
                 type="text"
                 value={newFolderName}
@@ -406,7 +403,7 @@ export const Sidebar: React.FC = () => {
                 }}
                 placeholder={t.folderNamePlaceholder}
                 autoFocus
-                className="flex-1 min-w-0 bg-transparent border-b border-amber-500 focus:outline-none text-gray-900 dark:text-gray-100 text-xs py-0.5"
+                className="flex-1 min-w-0 bg-transparent border-b border-blue-500 focus:outline-none text-gray-900 dark:text-gray-100 text-xs py-0.5"
               />
               <button onClick={handleCreateFolder} className="p-1 text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer"><Check className="w-3 h-3" /></button>
               <button onClick={() => { setCreatingFolder(false); setNewFolderName(''); }} className="p-1 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer"><X className="w-3 h-3" /></button>
@@ -417,7 +414,7 @@ export const Sidebar: React.FC = () => {
           {!creatingFolder && (
             <button
               onClick={() => setCreatingFolder(true)}
-              className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-500 uppercase tracking-widest cursor-pointer transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 uppercase tracking-widest cursor-pointer transition-colors"
             >
               <FolderPlus className="w-3 h-3" />
               {t.newFolder}
@@ -426,7 +423,7 @@ export const Sidebar: React.FC = () => {
 
           {store.chats.length === 0 && store.folders.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-36 text-center text-xs text-gray-400 dark:text-gray-500 px-4 space-y-2 select-none animate-pulse-slow">
-              <MessageCircle className="w-7 h-7 stroke-[1.2] text-amber-500/40" />
+              <MessageCircle className="w-7 h-7 stroke-[1.2] text-blue-500/40" />
               <p className="font-medium">{t.noHistory}</p>
             </div>
           ) : (
@@ -439,10 +436,10 @@ export const Sidebar: React.FC = () => {
 
                 return (
                   <div key={folder.id} className="space-y-0.5">
-                    <div className="group flex items-center min-h-9 px-2 rounded-lg hover:bg-black/4 dark:hover:bg-white/4 transition-colors">
+                    <div className="group flex items-center min-h-9 px-2 rounded-xl hover:bg-white/70 dark:hover:bg-white/4 transition-colors">
                       {isEditingFolder ? (
                         <div className="flex items-center gap-1 flex-1 min-w-0">
-                          <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <Folder className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                           <input
                             type="text"
                             value={editFolderName}
@@ -452,7 +449,7 @@ export const Sidebar: React.FC = () => {
                               if (e.key === 'Escape') setEditingFolderId(null);
                             }}
                             autoFocus
-                            className="flex-1 min-w-0 bg-transparent border-b border-amber-500 focus:outline-none text-gray-900 dark:text-gray-100 text-xs py-0.5"
+                            className="flex-1 min-w-0 bg-transparent border-b border-blue-500 focus:outline-none text-gray-900 dark:text-gray-100 text-xs py-0.5"
                           />
                           <button onClick={() => handleSaveFolderRename(folder.id)} className="p-1 text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer"><Check className="w-3 h-3" /></button>
                           <button onClick={() => setEditingFolderId(null)} className="p-1 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer"><X className="w-3 h-3" /></button>
@@ -464,7 +461,7 @@ export const Sidebar: React.FC = () => {
                             className="flex items-center gap-1.5 flex-1 min-w-0 py-1 cursor-pointer"
                           >
                             {isExpanded ? <ChevronDown className="w-3 h-3 text-gray-400 shrink-0" /> : <ChevronRight className="w-3 h-3 text-gray-400 shrink-0" />}
-                            {isExpanded ? <FolderOpen className="w-3.5 h-3.5 text-amber-500 shrink-0" /> : <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                            {isExpanded ? <FolderOpen className="w-3.5 h-3.5 text-blue-500 shrink-0" /> : <Folder className="w-3.5 h-3.5 text-blue-500 shrink-0" />}
                             <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 truncate">{folder.name}</span>
                             <span className="text-[9px] text-gray-400 dark:text-gray-600 ml-1">{folderChats.length}</span>
                           </button>
@@ -472,7 +469,7 @@ export const Sidebar: React.FC = () => {
                             <button
                               onClick={() => { setEditingFolderId(folder.id); setEditFolderName(folder.name); }}
                               aria-label={t.renameFolder}
-                              className="min-w-8 min-h-8 flex items-center justify-center text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-black/5 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
+                              className="min-w-8 min-h-8 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
                             >
                               <Edit2 className="w-3 h-3" />
                             </button>
@@ -526,7 +523,7 @@ export const Sidebar: React.FC = () => {
         <div className="p-3 border-t border-border-light/50 dark:border-border-dark/60 shrink-0">
           <button
             onClick={() => store.setSettingsOpen(true)}
-            className="min-h-11 flex items-center space-x-2.5 w-full px-3 py-2.5 text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 hover:bg-black/4 dark:hover:bg-white/4 rounded-xl cursor-pointer transition-all duration-200"
+              className="min-h-11 flex items-center space-x-2.5 w-full px-3 py-2.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/70 dark:hover:bg-white/4 rounded-2xl cursor-pointer transition-all duration-200"
           >
             <Settings className="w-4 h-4 shrink-0" />
             <span className="font-semibold text-xs tracking-wide">{t.settings}</span>

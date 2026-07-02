@@ -5,7 +5,7 @@ import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 import { db } from '../services/db';
 import {
   X, Shield, Settings, Database, Eye, EyeOff, Check, AlertCircle, Search,
-  Trash2, Plus, RefreshCw, Globe, Key, HelpCircle, DollarSign, Lock, Save, FileText, ChevronLeft, HardDrive
+  Trash2, Plus, RefreshCw, Key, HelpCircle, DollarSign, Lock, Save, FileText, ChevronLeft, HardDrive
 } from 'lucide-react';
 import type { ModelPrice } from '../services/db';
 import { EXPORT_VERSION, validateImportData } from '../utils/importExport';
@@ -15,6 +15,7 @@ import {
   type StorageSummary,
 } from '../utils/storageStats';
 import { formatBytes, formatPercent } from '../utils/storageSize';
+import { ModelIcon } from './ModelIcon';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -80,7 +81,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
   useEffect(() => {
     if (activeTab === 'data') {
-      void refreshStorage();
+      queueMicrotask(() => {
+        void refreshStorage();
+      });
     }
   }, [activeTab, refreshStorage]);
 
@@ -382,7 +385,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4.5 border-b border-border-light dark:border-border-dark bg-card-light/30 dark:bg-sidebar-dark/20 shrink-0 select-none">
           <div className="flex items-center space-x-2.5 text-gray-900 dark:text-gray-50 font-bold text-md font-heading">
-            <Settings className="w-5 h-5 text-amber-600 dark:text-amber-500" />
+            <Settings className="w-5 h-5 text-blue-600 dark:text-sky-400" />
             <span id="settings-dialog-title">{t.settings}</span>
           </div>
           <button
@@ -405,7 +408,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               aria-pressed={activeTab === 'connections'}
               className={`flex flex-col md:flex-row items-center md:space-x-2.5 px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-3 ${
                 activeTab === 'connections'
-                  ? 'border-amber-600 dark:border-amber-500 bg-card-light/60 dark:bg-card-dark/60 text-amber-600 dark:text-amber-400 font-bold'
+                  ? 'border-blue-600 dark:border-sky-400 bg-card-light/60 dark:bg-card-dark/60 text-blue-600 dark:text-sky-400 font-bold'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-card-light/30 dark:hover:bg-card-dark/30 hover:text-gray-900 dark:hover:text-gray-200'
               }`}
             >
@@ -418,7 +421,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               aria-pressed={activeTab === 'prompt'}
               className={`flex flex-col md:flex-row items-center md:space-x-2.5 px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-3 ${
                 activeTab === 'prompt'
-                  ? 'border-amber-600 dark:border-amber-500 bg-card-light/60 dark:bg-card-dark/60 text-amber-600 dark:text-amber-400 font-bold'
+                  ? 'border-blue-600 dark:border-sky-400 bg-card-light/60 dark:bg-card-dark/60 text-blue-600 dark:text-sky-400 font-bold'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-card-light/30 dark:hover:bg-card-dark/30 hover:text-gray-900 dark:hover:text-gray-200'
               }`}
             >
@@ -431,7 +434,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               aria-pressed={activeTab === 'pricing'}
               className={`flex flex-col md:flex-row items-center md:space-x-2.5 px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-3 ${
                 activeTab === 'pricing'
-                  ? 'border-amber-600 dark:border-amber-500 bg-card-light/60 dark:bg-card-dark/60 text-amber-600 dark:text-amber-400 font-bold'
+                  ? 'border-blue-600 dark:border-sky-400 bg-card-light/60 dark:bg-card-dark/60 text-blue-600 dark:text-sky-400 font-bold'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-card-light/30 dark:hover:bg-card-dark/30 hover:text-gray-900 dark:hover:text-gray-200'
               }`}
             >
@@ -444,7 +447,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               aria-pressed={activeTab === 'security'}
               className={`flex flex-col md:flex-row items-center md:space-x-2.5 px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-3 ${
                 activeTab === 'security'
-                  ? 'border-amber-600 dark:border-amber-500 bg-card-light/60 dark:bg-card-dark/60 text-amber-600 dark:text-amber-400 font-bold'
+                  ? 'border-blue-600 dark:border-sky-400 bg-card-light/60 dark:bg-card-dark/60 text-blue-600 dark:text-sky-400 font-bold'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-card-light/30 dark:hover:bg-card-dark/30 hover:text-gray-900 dark:hover:text-gray-200'
               }`}
             >
@@ -457,7 +460,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               aria-pressed={activeTab === 'data'}
               className={`flex flex-col md:flex-row items-center md:space-x-2.5 px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-3 ${
                 activeTab === 'data'
-                  ? 'border-amber-600 dark:border-amber-500 bg-card-light/60 dark:bg-card-dark/60 text-amber-600 dark:text-amber-400 font-bold'
+                  ? 'border-blue-600 dark:border-sky-400 bg-card-light/60 dark:bg-card-dark/60 text-blue-600 dark:text-sky-400 font-bold'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-card-light/30 dark:hover:bg-card-dark/30 hover:text-gray-900 dark:hover:text-gray-200'
               }`}
             >
@@ -483,7 +486,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                       placeholder={t.searchProviders}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-8 pr-3 py-2 bg-card-light dark:bg-sidebar-dark text-xs border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                      className="w-full pl-8 pr-3 py-2 bg-card-light dark:bg-sidebar-dark text-xs border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
                     />
                     <Search className="absolute left-5.5 top-[23px] w-3.5 h-3.5 text-gray-400" />
                   </div>
@@ -499,7 +502,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                           key={p.id}
                           className={`group flex items-center justify-between w-full rounded-xl text-xs font-semibold transition-all ${
                             isSelected
-                              ? 'bg-card-light dark:bg-card-dark text-amber-600 dark:text-amber-400 shadow-sm border-l-2 border-amber-600 dark:border-amber-500'
+                              ? 'bg-card-light dark:bg-card-dark text-blue-600 dark:text-sky-400 shadow-sm border-l-2 border-blue-600 dark:border-sky-400'
                               : 'text-gray-600 dark:text-gray-400 hover:bg-card-light/40 dark:hover:bg-card-dark/40 hover:text-gray-950 dark:hover:text-gray-100'
                           }`}
                         >
@@ -512,15 +515,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                               setFetchError(null);
                               setMobileDetailView(true);
                             }}
-                            className="min-h-11 flex flex-1 items-center space-x-2 min-w-0 px-3 py-2.5 text-left cursor-pointer rounded-xl focus-visible:outline-2 focus-visible:outline-amber-500"
+                            className="min-h-11 flex flex-1 items-center space-x-2 min-w-0 px-3 py-2.5 text-left cursor-pointer rounded-xl focus-visible:outline-2 focus-visible:outline-blue-500"
                           >
-                            {/* Brand dot indicator */}
-                            <span 
-                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                p.enabled ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-gray-300 dark:bg-gray-600'
-                              }`} 
+                            <ModelIcon
+                              providerId={p.id}
+                              providerName={p.name}
+                              className="w-5 h-5"
                             />
                             <span className="truncate">{p.name}</span>
+                            <span
+                              className={`ml-auto w-1.5 h-1.5 rounded-full shrink-0 ${
+                                p.enabled ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-gray-300 dark:bg-gray-600'
+                              }`}
+                            />
                           </button>
 
                           {/* Delete custom provider option */}
@@ -565,7 +572,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         <div className="flex space-x-2">
                           <button
                             type="submit"
-                            className="flex-1 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[10px] font-bold cursor-pointer transition-colors shadow-sm"
+                            className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-bold cursor-pointer transition-colors shadow-sm"
                           >
                             {t.save}
                           </button>
@@ -581,7 +588,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     ) : (
                       <button
                         onClick={() => setIsAddingCustom(true)}
-                        className="w-full flex items-center justify-center space-x-1.5 px-3 py-2.5 border border-dashed border-border-light dark:border-border-dark hover:border-amber-500/50 hover:bg-card-light/40 dark:hover:bg-card-dark/40 text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+                        className="w-full flex items-center justify-center space-x-1.5 px-3 py-2.5 border border-dashed border-border-light dark:border-border-dark hover:border-blue-500/50 hover:bg-card-light/40 dark:hover:bg-card-dark/40 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 rounded-xl text-xs font-semibold cursor-pointer transition-all"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>{t.addProvider}</span>
@@ -597,7 +604,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   {/* Mobile-only back button to return to the provider list */}
                   <button
                     onClick={() => setMobileDetailView(false)}
-                    className="md:hidden flex items-center space-x-1.5 -mt-1 mb-1 px-2.5 py-1.5 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg cursor-pointer transition-colors"
+                    className="md:hidden flex items-center space-x-1.5 -mt-1 mb-1 px-2.5 py-1.5 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg cursor-pointer transition-colors"
                   >
                     <ChevronLeft className="w-4 h-4" />
                     <span>{t.providerList}</span>
@@ -606,6 +613,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   {/* Top Bar Header with switch */}
                   <div className="flex items-center justify-between border-b border-border-light dark:border-border-dark pb-4.5 select-none">
                     <div className="flex items-center space-x-1.5">
+                      <ModelIcon
+                        providerId={activeProvider.id}
+                        providerName={activeProvider.name}
+                        className="w-6 h-6"
+                      />
                       <span className="font-bold text-gray-900 dark:text-gray-50 text-lg font-heading">{activeProvider.name}</span>
                       <span title={t.howCanIHelpSub}>
                         <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
@@ -643,7 +655,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                             href={PROVIDER_KEY_LINKS[selectedProviderId]}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-[10px] text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 hover:underline cursor-pointer font-semibold flex items-center space-x-0.5"
+                            className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-sky-400 dark:hover:text-sky-400 hover:underline cursor-pointer font-semibold flex items-center space-x-0.5"
                           >
                             <span>{t.getApiKey}</span>
                           </a>
@@ -663,7 +675,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                             }}
                             disabled={store.keysLocked}
                             placeholder="********************************"
-                            className="w-full pl-3.5 pr-10 py-2.5 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 dark:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full pl-3.5 pr-10 py-2.5 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                           />
                           <button
                             type="button"
@@ -691,7 +703,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         <button
                           type="button"
                           onClick={store.openUnlockPrompt}
-                          className="min-h-11 px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl cursor-pointer"
+                          className="min-h-11 px-3 py-2 text-xs font-bold text-blue-700 dark:text-sky-300 bg-blue-500/10 border border-blue-500/20 rounded-xl cursor-pointer"
                         >
                           {t.unlock}
                         </button>
@@ -730,7 +742,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                           if (event.currentTarget.value !== activeProvider.baseUrl) void handleProviderConfigChange('baseUrl', event.currentTarget.value);
                         }}
                         placeholder="http://localhost:port"
-                        className="flex-1 px-3.5 py-2.5 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 dark:text-gray-100"
+                        className="flex-1 px-3.5 py-2.5 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:text-gray-100"
                       />
                       
                       {/* Reset Button */}
@@ -773,7 +785,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         if (event.currentTarget.value !== activeProvider.corsProxy) void handleProviderConfigChange('corsProxy', event.currentTarget.value);
                       }}
                       placeholder="例: https://cors-anywhere.herokuapp.com/"
-                      className="w-full px-3.5 py-2.5 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 dark:text-gray-100"
+                      className="w-full px-3.5 py-2.5 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:text-gray-100"
                     />
                   </div>
 
@@ -784,7 +796,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         <span className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
                           {t.models}
                         </span>
-                        <span className="px-2 py-0.5 bg-amber-500/10 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold font-mono text-[10px] rounded-full">
+                        <span className="px-2 py-0.5 bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-sky-400 font-bold font-mono text-[10px] rounded-full">
                           {activeProvider.models.length}
                         </span>
                       </div>
@@ -795,7 +807,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 	                          type="button"
 	                          onClick={() => setIsAddingModel(!isAddingModel)}
 	                          aria-label={t.addModelPlaceholder}
-	                          className="p-1.5 border border-border-light dark:border-border-dark hover:bg-card-light dark:hover:bg-card-dark rounded-lg text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 transition-colors cursor-pointer"
+	                          className="p-1.5 border border-border-light dark:border-border-dark hover:bg-card-light dark:hover:bg-card-dark rounded-lg text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 transition-colors cursor-pointer"
                           title="手動でモデルを追加"
                         >
                           <Plus className="w-4 h-4" />
@@ -824,11 +836,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 	                          placeholder={t.addModelPlaceholder}
                           value={newModelId}
                           onChange={(e) => setNewModelId(e.target.value)}
-                          className="flex-1 px-3 py-1.5 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500"
+                          className="flex-1 px-3 py-1.5 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500"
                         />
                         <button
                           type="submit"
-                          className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors"
                         >
                           {t.add}
                         </button>
@@ -865,12 +877,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                   className="group flex items-center justify-between py-1.5 px-2.5 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-all"
                                 >
                                   <div className="flex items-center space-x-2.5 truncate pr-4">
-                                    <Globe className={`w-3.5 h-3.5 shrink-0 ${
-                                      selectedProviderId === 'gemini' ? 'text-blue-500' :
-                                      selectedProviderId === 'openai' ? 'text-emerald-500' :
-                                      selectedProviderId === 'claude' ? 'text-amber-600' :
-                                      'text-gray-500'
-                                    }`} />
+                                    <ModelIcon
+                                      providerId={selectedProviderId}
+                                      providerName={activeProvider.name}
+                                      modelId={mId}
+                                      className="w-4.5 h-4.5"
+                                    />
                                     <span className="text-xs font-mono truncate select-all text-gray-800 dark:text-gray-200">{mId}</span>
                                   </div>
 
@@ -908,14 +920,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     value={store.globalSystemPrompt}
                     onChange={(e) => store.updateSetting('globalSystemPrompt', e.target.value)}
                     placeholder="例: あなたは親切なプログラミングアシスタントです。常に日本語で簡潔に回答し、コード例を提示してください。"
-                    className="w-full px-4 py-3.5 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-2xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 dark:text-gray-100 font-sans resize-none shadow-inner"
+                    className="w-full px-4 py-3.5 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-2xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:text-gray-100 font-sans resize-none shadow-inner"
                   />
                   <button
                     onClick={() => {
                       setNewPresetContent(store.globalSystemPrompt);
                       setNewPresetName('');
                     }}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 text-[11px] font-bold border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark text-gray-600 dark:text-gray-300 rounded-lg hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer transition-colors"
+                    className="flex items-center space-x-1.5 px-3 py-1.5 text-[11px] font-bold border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark text-gray-600 dark:text-gray-300 rounded-lg hover:text-blue-600 dark:hover:text-sky-400 cursor-pointer transition-colors"
                   >
                     <Save className="w-3.5 h-3.5" />
                     <span>{t.saveCurrentAsPreset}</span>
@@ -933,19 +945,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                       value={newPresetName}
                       onChange={(e) => setNewPresetName(e.target.value)}
                       placeholder={t.presetName}
-                      className="w-full px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                      className="w-full px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100"
                     />
                     <textarea
                       rows={3}
                       value={newPresetContent}
                       onChange={(e) => setNewPresetContent(e.target.value)}
                       placeholder={t.presetContentPlaceholder}
-                      className="w-full px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100 resize-none"
+                      className="w-full px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100 resize-none"
                     />
                     <button
                       onClick={handleSavePreset}
                       disabled={!newPresetName.trim() || !newPresetContent.trim()}
-                      className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
+                      className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>{t.savePreset}</span>
@@ -961,7 +973,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         <div key={p.id} className="group flex items-start justify-between p-3 rounded-xl border border-border-light dark:border-border-dark bg-card-light/20 dark:bg-sidebar-dark/10">
                           <div className="min-w-0 flex-1 pr-3">
                             <div className="flex items-center space-x-1.5 mb-1">
-                              <FileText className="w-3.5 h-3.5 text-amber-600 dark:text-amber-500 shrink-0" />
+                              <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400 shrink-0" />
                               <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{p.name}</span>
                             </div>
                             <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">{p.content}</p>
@@ -970,7 +982,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                             <button
                               onClick={() => store.updateSetting('globalSystemPrompt', p.content)}
                               title={t.applyToGlobal}
-                              className="px-2 py-1 text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-md hover:bg-amber-500/20 cursor-pointer transition-colors"
+                              className="px-2 py-1 text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-sky-400 rounded-md hover:bg-blue-500/20 cursor-pointer transition-colors"
                             >
                               {t.useThisPreset}
                             </button>
@@ -1005,7 +1017,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 	                    value={newPriceModel}
                     onChange={(e) => setNewPriceModel(e.target.value)}
                     placeholder={t.priceModelPlaceholder}
-                    className="col-span-12 sm:col-span-5 px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                    className="col-span-12 sm:col-span-5 px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100"
                   />
 	                  <input
 	                    type="number" step="0.01"
@@ -1013,7 +1025,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 	                    value={newPriceIn}
                     onChange={(e) => setNewPriceIn(e.target.value)}
                     placeholder={t.priceInputLabel}
-                    className="col-span-5 sm:col-span-3 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                    className="col-span-5 sm:col-span-3 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100"
                   />
 	                  <input
 	                    type="number" step="0.01"
@@ -1021,12 +1033,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 	                    value={newPriceOut}
                     onChange={(e) => setNewPriceOut(e.target.value)}
                     placeholder={t.priceOutputLabel}
-                    className="col-span-5 sm:col-span-3 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                    className="col-span-5 sm:col-span-3 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100"
                   />
 	                  <button
 	                    onClick={handleAddPrice}
 	                    aria-label={t.addPrice}
-	                    className="col-span-2 sm:col-span-1 flex items-center justify-center p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg cursor-pointer transition-colors"
+	                    className="col-span-2 sm:col-span-1 flex items-center justify-center p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer transition-colors"
                   >
                     <Plus className="w-4 h-4" />
                   </button>
@@ -1083,7 +1095,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 	                        value={encPass}
                         onChange={(e) => setEncPass(e.target.value)}
                         placeholder={t.passphrase}
-                        className="w-full px-3.5 py-2.5 text-sm bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                        className="w-full px-3.5 py-2.5 text-sm bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-blue-500 dark:text-gray-100"
                       />
 	                      <input
 	                        type="password"
@@ -1091,13 +1103,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 	                        value={encPass2}
                         onChange={(e) => setEncPass2(e.target.value)}
                         placeholder={t.passphraseConfirm}
-                        className="w-full px-3.5 py-2.5 text-sm bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                        className="w-full px-3.5 py-2.5 text-sm bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-blue-500 dark:text-gray-100"
                       />
                       {encError && <p className="text-xs text-red-500 font-semibold">{encError}</p>}
                       <button
                         onClick={handleEnableEncryption}
                         disabled={!encPass || !encPass2}
-                        className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-xl text-sm font-bold cursor-pointer transition-colors"
+                        className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-xl text-sm font-bold cursor-pointer transition-colors"
                       >
                         {t.enableEncryption}
                       </button>
@@ -1128,7 +1140,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         onClick={() => store.updateSetting('theme', tVal)}
                         className={`flex-1 px-4 py-2.5 text-xs sm:text-sm font-semibold border rounded-xl transition-all cursor-pointer capitalize active:scale-98 shadow-sm ${
                           store.theme === tVal
-                            ? 'bg-amber-600/10 border-amber-600 text-amber-600 dark:text-amber-400 font-bold'
+                            ? 'bg-blue-600/10 border-blue-600 text-blue-600 dark:text-sky-400 font-bold'
                             : 'bg-card-light dark:bg-sidebar-dark border-border-light dark:border-border-dark text-gray-700 dark:text-gray-300 hover:bg-card-light dark:hover:bg-card-dark'
                         }`}
                       >
@@ -1144,7 +1156,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   <select
                     value={language}
                     onChange={(e) => store.updateSetting('language', e.target.value)}
-                    className="w-full px-4 py-3 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 dark:text-gray-100 font-semibold cursor-pointer shadow-sm"
+                    className="w-full px-4 py-3 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:text-gray-100 font-semibold cursor-pointer shadow-sm"
                   >
                     <option value="ja">日本語 (Japanese)</option>
                     <option value="en">English</option>
@@ -1157,7 +1169,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1 select-none">
                       <div className="flex items-center gap-2">
-                        <HardDrive className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0" />
+                        <HardDrive className="w-4 h-4 text-blue-600 dark:text-sky-400 shrink-0" />
                         <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest font-heading">{t.storageUsage}</h3>
                       </div>
                       <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">{t.storageUsageDesc}</p>
@@ -1167,7 +1179,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                       onClick={() => void refreshStorage()}
                       disabled={storageLoading}
                       aria-label={t.storageRefresh}
-                      className="shrink-0 min-h-9 px-3 py-1.5 flex items-center gap-1.5 text-[11px] font-bold border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark text-gray-600 dark:text-gray-300 rounded-lg hover:text-amber-600 dark:hover:text-amber-400 disabled:opacity-50 cursor-pointer transition-colors"
+                      className="shrink-0 min-h-9 px-3 py-1.5 flex items-center gap-1.5 text-[11px] font-bold border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark text-gray-600 dark:text-gray-300 rounded-lg hover:text-blue-600 dark:hover:text-sky-400 disabled:opacity-50 cursor-pointer transition-colors"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${storageLoading ? 'animate-spin' : ''}`} />
                       <span className="hidden sm:inline">{storageLoading ? t.storageLoading : t.storageRefresh}</span>
@@ -1186,7 +1198,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                           </div>
                           <div className="h-2 rounded-full bg-black/5 dark:bg-white/8 overflow-hidden">
                             <div
-                              className="h-full rounded-full bg-amber-500 transition-all duration-300"
+                              className="h-full rounded-full bg-blue-500 transition-all duration-300"
                               style={{
                                 width: `${Math.min(100, ((storageSummary.browserUsage ?? 0) / storageSummary.browserQuota) * 100)}%`,
                               }}
@@ -1234,11 +1246,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                   <div className="flex-1 min-w-0 space-y-1">
                                     <div className="flex items-center justify-between gap-2">
                                       <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">{title}</span>
-                                      <span className="text-[11px] font-mono font-bold text-amber-700 dark:text-amber-400 shrink-0">{formatBytes(entry.totalBytes)}</span>
+                                      <span className="text-[11px] font-mono font-bold text-blue-700 dark:text-sky-400 shrink-0">{formatBytes(entry.totalBytes)}</span>
                                     </div>
                                     <div className="h-1.5 rounded-full bg-black/5 dark:bg-white/8 overflow-hidden">
                                       <div
-                                        className="h-full rounded-full bg-amber-500/80"
+                                        className="h-full rounded-full bg-blue-500/80"
                                         style={{ width: `${barWidth}%` }}
                                       />
                                     </div>
@@ -1325,14 +1337,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     <button
                       type="button"
                       onClick={closeConfirm}
-                      className="px-3.5 py-2 rounded-xl border border-border-light dark:border-border-dark text-xs font-bold text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer transition-colors"
+                      className="px-3.5 py-2 rounded-xl border border-border-light dark:border-border-dark text-xs font-bold text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-sky-400 cursor-pointer transition-colors"
                     >
                       {t.cancel}
                     </button>
                     <button
                       type="button"
                       onClick={acceptConfirm}
-                      className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white cursor-pointer transition-colors"
+                      className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white cursor-pointer transition-colors"
                     >
                       {t.ok}
                     </button>
@@ -1341,7 +1353,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   <button
                     type="button"
                     onClick={() => setNotice(null)}
-                    className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white cursor-pointer transition-colors"
+                    className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white cursor-pointer transition-colors"
                   >
                     {t.ok}
                   </button>

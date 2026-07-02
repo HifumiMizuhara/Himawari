@@ -3,23 +3,23 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-sidebar-dark: #09090b;
-  --color-bg-dark: #0f0f11;
-  --color-card-dark: #161619;
-  --color-border-dark: rgba(255, 255, 255, 0.08);
+  --color-sidebar-dark: #12131b;
+  --color-bg-dark: #0f1117;
+  --color-card-dark: #171923;
+  --color-border-dark: rgba(255, 255, 255, 0.09);
 
-  --color-sidebar-light: #f5f4f0;
-  --color-bg-light: #FAF9F6;
-  --color-card-light: #ffffff;
-  --color-border-light: rgba(0, 0, 0, 0.06);
+  --color-sidebar-light: #f4f5f8;
+  --color-bg-light: #f7f8fc;
+  --color-card-light: rgba(255, 255, 255, 0.86);
+  --color-border-light: rgba(71, 85, 105, 0.14);
 
-  --color-accent-blue: #d97706;
+  --color-accent-blue: #4f46e5;
   --color-accent-green: #10b981;
 
-  --color-sun-gold: #d97706;
-  --color-sun-gold-hover: #b45309;
-  --color-sun-gold-light: rgba(217, 119, 6, 0.1);
-  --color-sun-gold-glow: rgba(217, 119, 6, 0.25);
+  --color-sun-gold: #4f46e5;
+  --color-sun-gold-hover: #4338ca;
+  --color-sun-gold-light: rgba(79, 70, 229, 0.1);
+  --color-sun-gold-glow: rgba(79, 70, 229, 0.22);
 
   --animate-fade-in: fade-in 0.25s ease-out;
   --animate-slide-up: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1);
@@ -53,6 +53,20 @@
   color-scheme: light dark;
 }
 
+body {
+  background:
+    radial-gradient(circle at top, rgba(143, 196, 255, 0.26), transparent 34%),
+    radial-gradient(circle at 50% 42%, rgba(191, 219, 254, 0.28), transparent 26%),
+    linear-gradient(180deg, #fbfcff 0%, #f5f7fb 100%);
+}
+
+.dark body {
+  background:
+    radial-gradient(circle at top, rgba(59, 130, 246, 0.14), transparent 32%),
+    radial-gradient(circle at 50% 36%, rgba(129, 140, 248, 0.12), transparent 24%),
+    linear-gradient(180deg, #0d1017 0%, #121722 100%);
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 4px;
@@ -64,13 +78,13 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(217, 119, 6, 0.12);
+  background: rgba(79, 70, 229, 0.12);
   border-radius: 9999px;
   transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(217, 119, 6, 0.35);
+  background: rgba(79, 70, 229, 0.35);
 }
 
 .no-scrollbar {
@@ -137,14 +151,40 @@ html, body, #root {
   padding: 0;
   width: 100%;
   height: 100%;
-  font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", "Segoe UI", sans-serif;
+  font-family: "Inter", "Hiragino Sans", "Yu Gothic", "Segoe UI", sans-serif;
   overflow: hidden;
   background-color: transparent;
   -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3, h4, h5, h6, button, .font-heading {
-  font-family: "Avenir Next Condensed", "DIN Alternate", "Hiragino Sans", sans-serif;
+  font-family: "Inter", "Hiragino Sans", "Yu Gothic", "Segoe UI", sans-serif;
+}
+
+.app-shell {
+  background:
+    radial-gradient(circle at top, rgba(125, 211, 252, 0.24), transparent 28%),
+    radial-gradient(circle at center, rgba(219, 234, 254, 0.42), transparent 32%),
+    linear-gradient(180deg, rgba(251, 252, 255, 0.96) 0%, rgba(246, 247, 251, 0.98) 100%);
+}
+
+.dark .app-shell {
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 24%),
+    radial-gradient(circle at center, rgba(99, 102, 241, 0.1), transparent 28%),
+    linear-gradient(180deg, rgba(13, 16, 23, 0.98) 0%, rgba(15, 19, 30, 0.98) 100%);
+}
+
+.gemini-chip {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 12px 30px rgba(148, 163, 184, 0.12);
+}
+
+.dark .gemini-chip {
+  background: rgba(23, 25, 35, 0.72);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.32);
 }
 
 /* Glassmorphism helpers */
@@ -172,8 +212,8 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
 
 .glass-input-light:focus-within {
   background: rgba(255, 255, 255, 0.96);
-  border-color: #d97706;
-  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12);
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
 }
 
 .glass-input-dark {
@@ -184,8 +224,8 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
 
 .glass-input-dark:focus-within {
   background: rgba(22, 22, 25, 0.92);
-  border-color: #d97706;
-  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.18);
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
 }
 
 /* Prose / markdown rendering */
@@ -245,16 +285,16 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
   font-size: 0.84em;
   padding: 0.15rem 0.38rem;
   border-radius: 0.375rem;
-  background: rgba(217, 119, 6, 0.08);
-  color: #b45309;
-  border: 1px solid rgba(217, 119, 6, 0.15);
+  background: rgba(79, 70, 229, 0.08);
+  color: #4338ca;
+  border: 1px solid rgba(79, 70, 229, 0.15);
   font-weight: 500;
 }
 
 .dark .prose code {
-  background: rgba(217, 119, 6, 0.12);
-  color: #fbbf24;
-  border-color: rgba(217, 119, 6, 0.2);
+  background: rgba(99, 102, 241, 0.12);
+  color: #a5b4fc;
+  border-color: rgba(99, 102, 241, 0.2);
 }
 
 .prose table {
@@ -288,13 +328,13 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
 }
 
 .prose blockquote {
-  border-left: 3px solid #d97706;
+  border-left: 3px solid #4f46e5;
   padding-left: 1rem;
   margin-top: 1rem;
   margin-bottom: 1rem;
   font-style: italic;
   color: rgba(0, 0, 0, 0.55);
-  background: rgba(217, 119, 6, 0.04);
+  background: rgba(79, 70, 229, 0.04);
   border-radius: 0 0.5rem 0.5rem 0;
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
@@ -303,28 +343,28 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
 
 .dark .prose blockquote {
   color: rgba(255, 255, 255, 0.55);
-  background: rgba(217, 119, 6, 0.06);
+  background: rgba(99, 102, 241, 0.06);
 }
 
 .prose a {
-  color: #d97706;
+  color: #4f46e5;
   text-decoration: underline;
-  text-decoration-color: rgba(217, 119, 6, 0.4);
+  text-decoration-color: rgba(79, 70, 229, 0.4);
   transition: color 0.15s, text-decoration-color 0.15s;
 }
 
 .prose a:hover {
-  color: #b45309;
-  text-decoration-color: rgba(180, 83, 9, 0.6);
+  color: #4338ca;
+  text-decoration-color: rgba(67, 56, 202, 0.6);
 }
 
 .dark .prose a {
-  color: #fbbf24;
-  text-decoration-color: rgba(251, 191, 36, 0.35);
+  color: #a5b4fc;
+  text-decoration-color: rgba(165, 180, 252, 0.35);
 }
 
 .dark .prose a:hover {
-  color: #f59e0b;
+  color: #c7d2fe;
 }
 
 @media (prefers-reduced-motion: reduce) {

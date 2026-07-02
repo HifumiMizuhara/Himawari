@@ -25,12 +25,18 @@ const App: React.FC = () => {
   }, [init]);
 
   return (
-    <div className="flex h-dvh w-screen overflow-hidden bg-bg-light dark:bg-bg-dark text-gray-800 dark:text-gray-100 font-sans antialiased">
-      {/* Sidebar history panel */}
-      <Sidebar />
+    <div className="app-shell flex h-dvh w-screen overflow-hidden text-gray-800 dark:text-gray-100 font-sans antialiased">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-1/2 top-0 h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-sky-200/35 blur-3xl dark:bg-sky-500/10" />
+      </div>
 
-      {/* Main chat window */}
-      <ChatArea />
+      <div className="relative flex h-full w-full overflow-hidden p-2 sm:p-3">
+        {/* Sidebar history panel */}
+        <Sidebar />
+
+        {/* Main chat window */}
+        <ChatArea />
+      </div>
 
       {/* Settings Modal Overlay */}
       {settingsOpen && (
