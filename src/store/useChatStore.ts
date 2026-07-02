@@ -289,6 +289,13 @@ export const useChatStore = create<ChatState>((set, get) => {
     return true;
   };
 
+  const reportHistoryLoadError = (error: unknown): void => {
+    console.error('Failed to initialize local database:', error);
+    const language = get().language;
+    const t = translations[language] || translations.ja;
+    set({ storageNotice: t.historyLoadError });
+  };
+
   const persistMessageWrite = async (operation: () => Promise<unknown>): Promise<boolean> => {
     try {
       await runDbWrite(operation);
@@ -562,109 +569,129 @@ export const useChatStore = create<ChatState>((set, get) => {
   storageNotice: null,
 
   init: async () => {
-    // 1. Load settings from DB
-    const settingsList = await db.settings.toArray();
-    const settingsMap: Record<string, unknown> = {};
-    settingsList.forEach(s => {
-      settingsMap[s.key] = s.value;
-    });
-
-    const getSetting = <T>(key: string): T =>
-      (settingsMap[key] !== undefined ? settingsMap[key] : DEFAULT_SETTINGS[key]) as T;
-
-    const theme = getSetting<'system' | 'light' | 'dark'>('theme');
-    const storedActiveModelId = getSetting<string>('activeModelId');
-    const activeModelId = replaceRetiredModel(storedActiveModelId);
-    const activeEffort = getSetting<string>('activeEffort') || 'none';
-    const activeWebSearch = getSetting<unknown>('activeWebSearch') === true || getSetting<unknown>('activeWebSearch') === 'true';
-    // Default the sidebar closed on phones (it's an overlay there); honor any
-    // explicitly stored preference on every viewport.
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    const sidebarRaw = settingsMap['sidebarOpen'] !== undefined
-      ? settingsMap['sidebarOpen']
-      : (isMobile ? 'false' : DEFAULT_SETTINGS['sidebarOpen']);
-
-    let loadedProviders = getSetting<Record<string, ProviderConfig>>('providers');
-    if (!loadedProviders || typeof loadedProviders !== 'object') {
-      loadedProviders = DEFAULT_PROVIDERS;
-    } else {
-      // Fix #10: merge at field level so new fields (e.g. corsProxy) are backfilled
-      Object.keys(DEFAULT_PROVIDERS).forEach((key) => {
-        if (!loadedProviders[key]) {
-          loadedProviders[key] = { ...DEFAULT_PROVIDERS[key] };
-        } else {
-          loadedProviders[key] = { ...DEFAULT_PROVIDERS[key], ...loadedProviders[key] };
-        }
+    try {
+      // 1. Load settings from DB
+      const settingsList = await db.settings.toArray();
+      const settingsMap: Record<string, unknown> = {};
+      settingsList.forEach(s => {
+        settingsMap[s.key] = s.value;
       });
-    }
-    loadedProviders = migrateProviderModels(loadedProviders);
 
-    const storedProviderId = getSetting<string>('activeProviderId');
-    const activeProviderId =
-      storedProviderId && loadedProviders[storedProviderId]
-        ? storedProviderId
-        : (findProviderForModel(loadedProviders, activeModelId)?.id || 'gemini');
+      const getSetting = <T>(key: string): T =>
+        (settingsMap[key] !== undefined ? settingsMap[key] : DEFAULT_SETTINGS[key]) as T;
 
-    // Read the raw stored value (not getSetting) so an absent setting stays
-    // undefined and triggers browser-language detection. getSetting would fall
-    // back to DEFAULT_SETTINGS.language ('ja') and the detection never ran.
-    let loadedLanguage = settingsMap['language'] as string | undefined;
-    if (!loadedLanguage) {
-      const browserLang = navigator.language || '';
-      if (browserLang.startsWith('ja')) {
-        loadedLanguage = 'ja';
-      } else if (browserLang.startsWith('zh')) {
-        loadedLanguage = 'zh';
+      const theme = getSetting<'system' | 'light' | 'dark'>('theme');
+      const storedActiveModelId = getSetting<string>('activeModelId');
+      const activeModelId = replaceRetiredModel(storedActiveModelId);
+      const activeEffort = getSetting<string>('activeEffort') || 'none';
+      const activeWebSearch = getSetting<unknown>('activeWebSearch') === true || getSetting<unknown>('activeWebSearch') === 'true';
+      // Default the sidebar closed on phones (it's an overlay there); honor any
+      // explicitly stored preference on every viewport.
+      const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+      const sidebarRaw = settingsMap['sidebarOpen'] !== undefined
+        ? settingsMap['sidebarOpen']
+        : (isMobile ? 'false' : DEFAULT_SETTINGS['sidebarOpen']);
+
+      let loadedProviders = getSetting<Record<string, ProviderConfig>>('providers');
+      if (!loadedProviders || typeof loadedProviders !== 'object') {
+        loadedProviders = DEFAULT_PROVIDERS;
       } else {
-        loadedLanguage = 'en';
+        // Fix #10: merge at field level so new fields (e.g. corsProxy) are backfilled
+        Object.keys(DEFAULT_PROVIDERS).forEach((key) => {
+          if (!loadedProviders[key]) {
+            loadedProviders[key] = { ...DEFAULT_PROVIDERS[key] };
+          } else {
+            loadedProviders[key] = { ...DEFAULT_PROVIDERS[key], ...loadedProviders[key] };
+          }
+        });
       }
-      await db.settings.put({ key: 'language', value: loadedLanguage });
+      loadedProviders = migrateProviderModels(loadedProviders);
+
+      const storedProviderId = getSetting<string>('activeProviderId');
+      const activeProviderId =
+        storedProviderId && loadedProviders[storedProviderId]
+          ? storedProviderId
+          : (findProviderForModel(loadedProviders, activeModelId)?.id || 'gemini');
+
+      // Read the raw stored value (not getSetting) so an absent setting stays
+      // undefined and triggers browser-language detection. getSetting would fall
+      // back to DEFAULT_SETTINGS.language ('ja') and the detection never ran.
+      let loadedLanguage = settingsMap['language'] as string | undefined;
+      if (!loadedLanguage) {
+        const browserLang = navigator.language || '';
+        if (browserLang.startsWith('ja')) {
+          loadedLanguage = 'ja';
+        } else if (browserLang.startsWith('zh')) {
+          loadedLanguage = 'zh';
+        } else {
+          loadedLanguage = 'en';
+        }
+        await db.settings.put({ key: 'language', value: loadedLanguage });
+      }
+
+      const promptPresets = getSetting<PromptPreset[]>('promptPresets') || [];
+      const modelPricing = getSetting<Record<string, ModelPrice>>('modelPricing') || {};
+      const keyEncryptionEnabled = getSetting<unknown>('keyEncryptionEnabled') === true;
+      const encryptedKeys = settingsMap['encryptedKeys'];
+      // If encryption is on and an encrypted blob exists, keys live only inside it;
+      // the providers loaded from DB have empty apiKey until the user unlocks.
+      const keysLocked = keyEncryptionEnabled && !!encryptedKeys;
+      if (keysLocked) {
+        loadedProviders = stripProviderKeys(loadedProviders);
+      }
+
+      await db.settings.put({ key: 'providers', value: loadedProviders });
+      if (activeModelId !== storedActiveModelId) {
+        await db.settings.put({ key: 'activeModelId', value: activeModelId });
+      }
+
+      // Defensive migration: older DBs may contain malformed chat records.
+      try {
+        await db.chats.toCollection().modify((chat) => {
+          if (typeof (chat as { modelId?: unknown }).modelId !== 'string' || !chat.modelId) {
+            chat.modelId = activeModelId;
+          } else {
+            chat.modelId = replaceRetiredModel(chat.modelId);
+          }
+        });
+      } catch (e) {
+        console.warn('Chat migration failed; continuing without modify:', e);
+      }
+
+      set({
+        providers: loadedProviders,
+        globalSystemPrompt: getSetting<string>('globalSystemPrompt'),
+        theme,
+        language: loadedLanguage as ChatState['language'],
+        activeProviderId,
+        activeModelId,
+        activeEffort,
+        activeWebSearch,
+        promptPresets,
+        modelPricing,
+        keyEncryptionEnabled,
+        keysLocked,
+        unlockPromptOpen: keysLocked,
+        sessionPassphrase: null,
+        sidebarOpen: sidebarRaw === 'true' || sidebarRaw === true,
+      });
+
+      // Apply theme
+      get().setTheme(theme);
+      document.documentElement.lang = loadedLanguage;
+
+      // 2. Load chats list
+      await get().loadChats();
+      await get().loadFolders();
+    } catch (error) {
+      reportHistoryLoadError(error);
+      // Best-effort: still try to populate the chat list if possible.
+      try {
+        await get().loadChats();
+      } catch (e) {
+        console.error('Failed to load chats after init failure:', e);
+      }
     }
-
-    const promptPresets = getSetting<PromptPreset[]>('promptPresets') || [];
-    const modelPricing = getSetting<Record<string, ModelPrice>>('modelPricing') || {};
-    const keyEncryptionEnabled = getSetting<unknown>('keyEncryptionEnabled') === true;
-    const encryptedKeys = settingsMap['encryptedKeys'];
-    // If encryption is on and an encrypted blob exists, keys live only inside it;
-    // the providers loaded from DB have empty apiKey until the user unlocks.
-    const keysLocked = keyEncryptionEnabled && !!encryptedKeys;
-    if (keysLocked) {
-      loadedProviders = stripProviderKeys(loadedProviders);
-    }
-
-    await db.settings.put({ key: 'providers', value: loadedProviders });
-    if (activeModelId !== storedActiveModelId) {
-      await db.settings.put({ key: 'activeModelId', value: activeModelId });
-    }
-    await db.chats.toCollection().modify((chat) => {
-      chat.modelId = replaceRetiredModel(chat.modelId);
-    });
-
-    set({
-      providers: loadedProviders,
-      globalSystemPrompt: getSetting<string>('globalSystemPrompt'),
-      theme,
-      language: loadedLanguage as ChatState['language'],
-      activeProviderId,
-      activeModelId,
-      activeEffort,
-      activeWebSearch,
-      promptPresets,
-      modelPricing,
-      keyEncryptionEnabled,
-      keysLocked,
-      unlockPromptOpen: keysLocked,
-      sessionPassphrase: null,
-      sidebarOpen: sidebarRaw === 'true' || sidebarRaw === true,
-    });
-
-    // Apply theme
-    get().setTheme(theme);
-    document.documentElement.lang = loadedLanguage;
-
-    // 2. Load chats list
-    await get().loadChats();
-    await get().loadFolders();
   },
 
   updateSetting: async (key: string, value: unknown) => {
