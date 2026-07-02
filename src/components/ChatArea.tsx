@@ -15,6 +15,8 @@ import {
 } from '../utils/fileParser';
 import { estimateTokens, computeCost, formatCost, DEFAULT_MODEL_PRICING } from '../utils/tokens';
 import { claudeSupportsXHigh } from '../utils/providerCompatibility';
+import { SafeMarkdownLink } from '../utils/markdownComponents';
+import { sanitizeHref } from '../utils/safeUrl';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -109,6 +111,7 @@ const HeaderDropdownPortal: React.FC<HeaderDropdownPortalProps> = ({
 export const ChatArea: React.FC = () => {
   const store = useChatStore();
   const { t } = useTranslation();
+  const isActiveChatGenerating = store.isChatGenerating(store.activeChatId);
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -147,6 +150,25 @@ export const ChatArea: React.FC = () => {
   const confirmDialogRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
   useDialogAccessibility(confirmDialogRef, () => setConfirmDialog(null), !!confirmDialog);
+
+  const markdownComponents = useMemo(() => ({
+    a: SafeMarkdownLink,
+    code({ node: _node, className, children, ...props }: React.ComponentProps<'code'> & { node?: unknown }) {
+      const match = /language-(\w+)/.exec(className || '');
+      const lang = match ? match[1] : '';
+      const rawCode = String(children);
+      const codeVal = rawCode.replace(/\n$/, '');
+      const isInline = !match && !rawCode.endsWith('\n');
+
+      return !isInline ? (
+        <CodeBlock lang={lang} code={codeVal} copyLabel={t.copy} copiedLabel={t.copied} />
+      ) : (
+        <code className="bg-amber-500/8 dark:bg-amber-500/12 border border-amber-500/15 px-1.5 py-0.5 rounded-md text-[0.84em] text-amber-700 dark:text-amber-300 font-mono break-all font-medium" {...props}>
+          {children}
+        </code>
+      );
+    },
+  }), [t.copy, t.copied]);
 
   const handleMessagesScroll = () => {
     const container = messagesContainerRef.current;
@@ -424,7 +446,7 @@ export const ChatArea: React.FC = () => {
   };
 
   const handleStartEdit = (messageId: string, content: string) => {
-    if (store.isGenerating) return;
+    if (isActiveChatGenerating) return;
     setEditingMessageId(messageId);
     setEditingText(content);
   };
@@ -441,7 +463,7 @@ export const ChatArea: React.FC = () => {
   };
 
   const handleSaveEdit = async (messageId: string, messageIndex: number) => {
-    if (!editingText.trim() || store.isGenerating) return;
+    if (!editingText.trim() || isActiveChatGenerating) return;
     if (messageIndex < store.messages.length - 1) {
       setConfirmDialog({
         message: t.editMessageConfirm,
@@ -455,7 +477,7 @@ export const ChatArea: React.FC = () => {
 
   const handleSend = async () => {
     if (!inputText.trim() && attachments.length === 0) return;
-    if (store.isGenerating) return;
+    if (isActiveChatGenerating) return;
 
     const content = inputText;
     const currentAttachments = [...attachments];
@@ -708,12 +730,12 @@ export const ChatArea: React.FC = () => {
 
         {/* Status indicator */}
         <div aria-live="polite" className={`flex items-center space-x-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full hidden sm:flex transition-all ${
-          store.isGenerating
+          isActiveChatGenerating
             ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
             : 'bg-card-light/60 dark:bg-card-dark/60 text-gray-400 dark:text-gray-500 border border-border-light/40 dark:border-border-dark/40'
         }`}>
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${store.isGenerating ? 'bg-amber-500 animate-ping' : 'bg-gray-300 dark:bg-gray-600'}`} />
-          <span className="font-mono tracking-wide">{store.isGenerating ? t.generating : t.idle}</span>
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActiveChatGenerating ? 'bg-amber-500 animate-ping' : 'bg-gray-300 dark:bg-gray-600'}`} />
+          <span className="font-mono tracking-wide">{isActiveChatGenerating ? t.generating : t.idle}</span>
         </div>
       </div>
 
@@ -902,26 +924,12 @@ export const ChatArea: React.FC = () => {
                                     )}
                                   </div>
                                 )}
-                                <ReactMarkdown
-                                  remarkPlugins={[remarkGfm]}
-                                  components={{
-                                    code({ node: _node, className, children, ...props }) {
-                                      const match = /language-(\w+)/.exec(className || '');
-                                      const lang = match ? match[1] : '';
-                                      const codeVal = String(children).replace(/\n$/, '');
-                                      const isInline = !match;
-                                      return !isInline ? (
-                                        <CodeBlock lang={lang} code={codeVal} copyLabel={t.copy} copiedLabel={t.copied} />
-                                      ) : (
-                                        <code className="bg-amber-500/8 dark:bg-amber-500/12 border border-amber-500/15 px-1.5 py-0.5 rounded-md text-[0.84em] text-amber-700 dark:text-amber-300 font-mono break-all font-medium" {...props}>
-                                          {children}
-                                        </code>
-                                      );
-                                    }
-                                  }}
-                                >
+                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                                   {v.content || '...'}
                                 </ReactMarkdown>
+                                {v.error && (
+                                  <p className="mt-3 text-xs text-red-600 dark:text-red-400 font-sans not-prose" role="alert">{v.error}</p>
+                                )}
                                 {v.citations && v.citations.length > 0 && (
                                   <Sources citations={v.citations} label={t.sourcesLabel} />
                                 )}
@@ -968,7 +976,7 @@ export const ChatArea: React.FC = () => {
                             >
                               <span className={`transition-transform duration-200 text-[10px] ${(thinkingOpen[msg.id] !== undefined ? thinkingOpen[msg.id] : true) ? 'rotate-90' : ''}`}>▶</span>
                               <span>{t.thinkingProcess}</span>
-                              {store.isGenerating && index === store.messages.length - 1 && (
+                              {isActiveChatGenerating && index === store.messages.length - 1 && (
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse ml-1 shrink-0" />
                               )}
                             </button>
@@ -1032,7 +1040,7 @@ export const ChatArea: React.FC = () => {
                                   </button>
                                   <button
                                     onClick={() => void handleSaveEdit(msg.id, index)}
-                                    disabled={!editingText.trim() || store.isGenerating}
+                                    disabled={!editingText.trim() || isActiveChatGenerating}
                                     className="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-[11px] font-semibold hover:bg-amber-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                                   >
                                     {t.saveAndRegenerate}
@@ -1044,28 +1052,13 @@ export const ChatArea: React.FC = () => {
                             <p className="whitespace-pre-wrap">{msg.content}</p>
                           )
                         ) : (
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              code({ node: _node, className, children, ...props }) {
-                                const match = /language-(\w+)/.exec(className || '');
-                                const lang = match ? match[1] : '';
-                                const rawCode = String(children);
-                                const codeVal = rawCode.replace(/\n$/, '');
-                                const isInline = !match && !rawCode.endsWith('\n');
-
-                                return !isInline ? (
-                                  <CodeBlock lang={lang} code={codeVal} copyLabel={t.copy} copiedLabel={t.copied} />
-                                ) : (
-                                  <code className="bg-amber-500/8 dark:bg-amber-500/12 border border-amber-500/15 px-1.5 py-0.5 rounded-md text-[0.84em] text-amber-700 dark:text-amber-300 font-mono break-all font-medium" {...props}>
-                                    {children}
-                                  </code>
-                                );
-                              }
-                            }}
-                          >
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                             {msg.content || '...'}
                           </ReactMarkdown>
+                        )}
+
+                        {msg.error && (
+                          <p className="mt-3 text-xs text-red-600 dark:text-red-400 font-sans not-prose" role="alert">{msg.error}</p>
                         )}
 
                         {!isUser && msg.citations && msg.citations.length > 0 && (
@@ -1084,7 +1077,7 @@ export const ChatArea: React.FC = () => {
                       <div className={messageActionStripClass}>
                         <button
                           onClick={() => handleStartEdit(msg.id, msg.content)}
-                          disabled={store.isGenerating}
+                          disabled={isActiveChatGenerating}
                           className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans disabled:opacity-40 disabled:cursor-not-allowed"
                           title={t.edit}
                         >
@@ -1279,7 +1272,7 @@ export const ChatArea: React.FC = () => {
               className="flex-1 px-3 py-2 bg-transparent focus:outline-none text-base sm:text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 resize-none max-h-[200px]"
             />
 
-            {store.isGenerating ? (
+            {isActiveChatGenerating ? (
               <button
                 onClick={store.stopGeneration}
                 aria-label={t.stop}
@@ -1362,19 +1355,35 @@ const Sources: React.FC<{ citations: Citation[]; label: string }> = ({ citations
         <span className="text-gray-300 dark:text-gray-600">({citations.length})</span>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {citations.map((c, i) => (
-          <a
-            key={`${c.url}-${i}`}
-            href={c.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={c.title || c.url}
-            className="flex items-center space-x-1.5 max-w-[260px] px-2.5 py-1 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-[11px] text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-500/30 transition-colors"
-          >
-            <span className="text-gray-400 dark:text-gray-500 font-mono text-[9px] shrink-0">{i + 1}</span>
-            <span className="truncate">{c.title || hostOf(c.url)}</span>
-          </a>
-        ))}
+        {citations.map((c, i) => {
+          const safeHref = sanitizeHref(c.url);
+          const content = (
+            <>
+              <span className="text-gray-400 dark:text-gray-500 font-mono text-[9px] shrink-0">{i + 1}</span>
+              <span className="truncate">{c.title || hostOf(c.url)}</span>
+            </>
+          );
+          const className = "flex items-center space-x-1.5 max-w-[260px] px-2.5 py-1 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-[11px] text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-500/30 transition-colors";
+          if (!safeHref) {
+            return (
+              <span key={`${c.url}-${i}`} title={c.title || c.url} className={`${className} cursor-default`}>
+                {content}
+              </span>
+            );
+          }
+          return (
+            <a
+              key={`${c.url}-${i}`}
+              href={safeHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={c.title || c.url}
+              className={className}
+            >
+              {content}
+            </a>
+          );
+        })}
       </div>
     </div>
   );

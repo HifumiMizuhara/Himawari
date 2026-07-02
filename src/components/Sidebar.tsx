@@ -119,6 +119,7 @@ export const Sidebar: React.FC = () => {
     const isActive = store.activeChatId === chat.id;
     const isEditing = editingId === chat.id;
     const showFolderMenu = folderMenuChatId === chat.id;
+    const isGenerating = store.isChatGenerating(chat.id);
 
     return (
       <div
@@ -157,6 +158,9 @@ export const Sidebar: React.FC = () => {
             <span className="flex-1 truncate leading-tight">
               {chat.title === 'New Chat' ? t.newChat : chat.title}
             </span>
+            {isGenerating && (
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0 ml-1.5" aria-hidden="true" />
+            )}
           </button>
         )}
 

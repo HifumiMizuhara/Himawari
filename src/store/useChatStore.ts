@@ -128,9 +128,7 @@ interface ChatState {
   settingsOpen: boolean;
   searchOpen: boolean;
   scrollTargetMessageId: string | null;
-  isGenerating: boolean;
-  abortController: AbortController | null;
-  generationChatId: string | null;
+  activeGenerations: Record<string, { generationId: string; abortController: AbortController }>;
   
   // Actions
   init: () => Promise<void>;
@@ -144,7 +142,6 @@ interface ChatState {
   fetchModelsForProvider: (providerId: string) => Promise<void>;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   setActiveModelId: (modelId: string, providerId?: string) => Promise<void>;
-  generationId: string | null;
   setActiveEffort: (effort: string) => Promise<void>;
   setActiveWebSearch: (enabled: boolean) => Promise<void>;
 
@@ -163,6 +160,7 @@ interface ChatState {
   regenerateResponse: (messageIndex: number, targetModelId?: string, targetProviderId?: string) => Promise<void>;
   switchMessageVariant: (messageId: string, variantIndex: number) => Promise<void>;
   stopGeneration: () => void;
+  isChatGenerating: (chatId?: string | null) => boolean;
   toggleSidebar: () => void;
   setSettingsOpen: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
@@ -306,25 +304,41 @@ export const useChatStore = create<ChatState>((set, get) => {
     const providerConfig = findProviderForModel(get().providers, modelId, providerId) || get().providers.custom;
     const controller = new AbortController();
     const myGenId = crypto.randomUUID();
-    set({ abortController: controller, generationId: myGenId, generationChatId: chatId });
+    set((state) => ({
+      activeGenerations: {
+        ...state.activeGenerations,
+        [chatId]: { generationId: myGenId, abortController: controller },
+      },
+    }));
+
+    const isCurrentGeneration = () => get().activeGenerations[chatId]?.generationId === myGenId;
+
+    const clearGeneration = () => {
+      set((state) => {
+        if (state.activeGenerations[chatId]?.generationId !== myGenId) return state;
+        const next = { ...state.activeGenerations };
+        delete next[chatId];
+        return { activeGenerations: next };
+      });
+    };
 
     let dbWriteTimer: ReturnType<typeof setTimeout> | null = null;
     let uiUpdateTimer: ReturnType<typeof setTimeout> | null = null;
     const storedAssistantMessage = await db.messages.get(assistantMessageId);
     if (!storedAssistantMessage) {
-      set({ isGenerating: false, abortController: null, generationId: null, generationChatId: null });
+      clearGeneration();
       return;
     }
     let currentAssistantMessage: Message = storedAssistantMessage;
 
     const flushMessageToDb = async () => {
-      if (get().generationId !== myGenId) return;
+      if (!isCurrentGeneration()) return;
       await db.messages.put(currentAssistantMessage);
     };
 
     const commitVisibleMessage = () => {
       uiUpdateTimer = null;
-      if (get().generationId !== myGenId || get().activeChatId !== chatId) return;
+      if (!isCurrentGeneration() || get().activeChatId !== chatId) return;
       set((state) => ({
         messages: state.messages.map((message) =>
           message.id === assistantMessageId ? currentAssistantMessage : message
@@ -335,7 +349,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     // Keep every chunk in the local message, but batch React and IndexedDB work.
     // Re-rendering a long Markdown history for every network chunk is needlessly costly.
     const updateAssistantMessage = async (transform: (message: Message) => Message) => {
-      if (get().generationId !== myGenId) return;
+      if (!isCurrentGeneration()) return;
       currentAssistantMessage = transform(currentAssistantMessage);
       if (!uiUpdateTimer) {
         uiUpdateTimer = setTimeout(commitVisibleMessage, 80);
@@ -450,22 +464,19 @@ export const useChatStore = create<ChatState>((set, get) => {
         console.log(abortLog);
       } else {
         console.error(errorLog, error);
-        const errMsg = `\n\n*(Error: ${getLocalizedErrorMessage(error, get().language)})*`;
+        const errorMessage = getLocalizedErrorMessage(error, get().language);
 
-        await updateAssistantMessage((message) => {
-          const nextContent = message.content + errMsg;
-          return {
-            ...message,
-            content: nextContent,
-            variants: updateVariant(message, (variant) => ({
-              ...variant,
-              content: nextContent,
-            })),
-          };
-        });
+        await updateAssistantMessage((message) => ({
+          ...message,
+          error: errorMessage,
+          variants: updateVariant(message, (variant) => ({
+            ...variant,
+            error: errorMessage,
+          })),
+        }));
       }
     } finally {
-      const stillCurrent = get().generationId === myGenId;
+      const stillCurrent = isCurrentGeneration();
       try {
         // Flush any pending debounced DB write before updating chat metadata.
         if (dbWriteTimer) {
@@ -485,8 +496,8 @@ export const useChatStore = create<ChatState>((set, get) => {
       } catch (e) {
         console.error('Failed to update chat metadata:', e);
       } finally {
-        if (get().generationId === myGenId) {
-          set({ isGenerating: false, abortController: null, generationId: null, generationChatId: null });
+        if (isCurrentGeneration()) {
+          clearGeneration();
         }
       }
     }
@@ -518,10 +529,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   settingsOpen: false,
   searchOpen: false,
   scrollTargetMessageId: null,
-  isGenerating: false,
-  abortController: null,
-  generationId: null,
-  generationChatId: null,
+  activeGenerations: {},
 
   init: async () => {
     // 1. Load settings from DB
@@ -965,9 +973,14 @@ export const useChatStore = create<ChatState>((set, get) => {
   },
 
   deleteChat: async (chatId) => {
-    if (get().generationChatId === chatId) {
-      get().abortController?.abort();
-      set({ isGenerating: false, abortController: null, generationId: null, generationChatId: null });
+    const generation = get().activeGenerations[chatId];
+    if (generation) {
+      generation.abortController.abort();
+      set((state) => {
+        const next = { ...state.activeGenerations };
+        delete next[chatId];
+        return { activeGenerations: next };
+      });
     }
     await db.transaction('rw', [db.chats, db.messages], async () => {
       await db.chats.delete(chatId);
@@ -992,8 +1005,8 @@ export const useChatStore = create<ChatState>((set, get) => {
   },
 
   clearAllChats: async () => {
-    get().abortController?.abort();
-    set({ isGenerating: false, abortController: null, generationId: null, generationChatId: null });
+    Object.values(get().activeGenerations).forEach((generation) => generation.abortController.abort());
+    set({ activeGenerations: {} });
     await db.transaction('rw', [db.chats, db.messages], async () => {
       await db.chats.clear();
       await db.messages.clear();
@@ -1002,11 +1015,11 @@ export const useChatStore = create<ChatState>((set, get) => {
   },
 
   sendMessage: async (content, attachments = []) => {
-    if (get().isGenerating) return;
     let chatId = get().activeChatId;
     if (!chatId) {
       chatId = await get().createChat();
     }
+    if (get().activeGenerations[chatId]) return;
 
     // 1. Create and save user message
     const userMsg: Message = {
@@ -1067,7 +1080,6 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     set({
       messages: [...messagesSoFar, assistantMsg],
-      isGenerating: true,
     });
 
     await streamAssistantReply({
@@ -1086,7 +1098,7 @@ export const useChatStore = create<ChatState>((set, get) => {
 
   editUserMessage: async (messageId, content) => {
     const chatId = get().activeChatId;
-    if (!chatId || get().isGenerating) return;
+    if (!chatId || get().activeGenerations[chatId]) return;
 
     const messages = [...get().messages];
     const messageIndex = messages.findIndex((message) => message.id === messageId);
@@ -1162,7 +1174,6 @@ export const useChatStore = create<ChatState>((set, get) => {
     await db.messages.add(assistantMsg);
     set({
       messages: [...baseMessages, assistantMsg],
-      isGenerating: true,
     });
 
     await streamAssistantReply({
@@ -1185,8 +1196,8 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     // Fix #2: abort the old stream without resetting state; the old finally will see
     // a mismatched generationId and skip its reset, so the new generation runs cleanly.
-    const existingController = get().abortController;
-    if (existingController) existingController.abort();
+    const existingGeneration = get().activeGenerations[chatId];
+    if (existingGeneration) existingGeneration.abortController.abort();
 
     const messages = [...get().messages];
     const assistantMsg = messages[messageIndex];
@@ -1238,6 +1249,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       ...assistantMsg,
       content: '', // Start empty for streaming
       thinking: '',
+      error: undefined,
       modelProviderId: providerUsed,
       modelUsed,
       variants: newVariants,
@@ -1249,7 +1261,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     const updatedMessages = messages.map((m, idx) => 
       idx === messageIndex ? updatedAssistantMsg : m
     );
-    set({ messages: updatedMessages, isGenerating: true });
+    set({ messages: updatedMessages });
 
     // 3. Prepare chat context up to the user message
     const messagesBefore = messages.slice(0, lastUserIndex + 1);
@@ -1287,6 +1299,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       modelUsed: variant.modelUsed,
       citations: variant.citations || [],
       usage: variant.usage,
+      error: variant.error,
     };
 
     await db.messages.put(updatedMsg);
@@ -1349,10 +1362,17 @@ export const useChatStore = create<ChatState>((set, get) => {
   },
 
   stopGeneration: () => {
-    const controller = get().abortController;
-    if (controller) {
-      controller.abort();
+    const chatId = get().activeChatId;
+    if (!chatId) return;
+    const generation = get().activeGenerations[chatId];
+    if (generation) {
+      generation.abortController.abort();
     }
+  },
+
+  isChatGenerating: (chatId) => {
+    const id = chatId ?? get().activeChatId;
+    return !!(id && get().activeGenerations[id]);
   },
 
   toggleSidebar: async () => {

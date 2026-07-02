@@ -8,6 +8,7 @@ import {
   Trash2, Plus, RefreshCw, Globe, Key, HelpCircle, DollarSign, Lock, Save, FileText, ChevronLeft
 } from 'lucide-react';
 import type { ModelPrice } from '../services/db';
+import { EXPORT_VERSION, validateImportData } from '../utils/importExport';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -255,7 +256,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     try {
       const chats = await db.chats.toArray();
       const messages = await db.messages.toArray();
-      const exportObj = { version: '1.0.0', exporter: 'Himawari AI Chat', chats, messages };
+      const folders = await db.folders.toArray();
+      const exportObj = { version: EXPORT_VERSION, exporter: 'Himawari AI Chat', chats, messages, folders };
       const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -281,18 +283,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
       reader.onload = async (evt) => {
         try {
           const importObj = JSON.parse(evt.target?.result as string);
-          // Fix #7: validate shape before touching the database
-          if (!importObj.chats || !Array.isArray(importObj.chats) ||
-              !importObj.messages || !Array.isArray(importObj.messages)) {
+          const validation = validateImportData(importObj);
+          if (!validation.ok) {
             setNotice(t.fileLoadError);
             return;
           }
-          await db.transaction('rw', [db.chats, db.messages], async () => {
-            for (const chat of importObj.chats) await db.chats.put(chat);
-            for (const message of importObj.messages) await db.messages.put(message);
+          const { chats, messages, folders } = validation.data;
+          await db.transaction('rw', [db.chats, db.messages, db.folders], async () => {
+            for (const chat of chats) await db.chats.put(chat);
+            for (const message of messages) await db.messages.put(message);
+            for (const folder of folders) await db.folders.put(folder);
           });
           await store.loadChats();
-          setNotice(t.copied);
+          await store.loadFolders();
+          setNotice(t.importSuccess);
         } catch {
           setNotice(t.fileLoadError);
         } finally {

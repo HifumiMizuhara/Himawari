@@ -48,6 +48,7 @@ export interface MessageVariant {
   timestamp: number;
   citations?: Citation[];
   usage?: TokenUsage;
+  error?: string;
 }
 
 export interface Message {
@@ -64,6 +65,7 @@ export interface Message {
   thinking?: string;
   citations?: Citation[];
   usage?: TokenUsage;
+  error?: string;
 }
 
 export interface PromptPreset {
