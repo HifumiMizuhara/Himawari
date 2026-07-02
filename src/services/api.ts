@@ -1,4 +1,4 @@
-import { type ProviderConfig } from './db';
+import { type ProviderConfig, type TokenUsage } from './db';
 import {
   buildApiUrl,
   getClaudeThinkingConfig,
@@ -158,7 +158,7 @@ export async function streamChatCompletion(
   onThinkingChunk: (text: string) => void | Promise<void>,
   signal: AbortSignal,
   onCitations?: (citations: Array<{ url: string; title?: string }>) => void | Promise<void>,
-  onUsage?: (usage: { inputTokens: number; outputTokens: number }) => void | Promise<void>
+  onUsage?: (usage: TokenUsage) => void | Promise<void>
 ): Promise<string> {
   const { providerConfig, modelId } = params;
 
@@ -370,6 +370,7 @@ export async function streamChatCompletion(
               await onUsage({
                 inputTokens: parsed.usageMetadata.promptTokenCount || 0,
                 outputTokens: parsed.usageMetadata.candidatesTokenCount || 0,
+                responseModel: typeof parsed.modelVersion === 'string' ? parsed.modelVersion : modelId,
               });
             }
 
@@ -420,6 +421,7 @@ export async function streamChatCompletion(
               await onUsage({
                 inputTokens: parsed.prompt_eval_count || 0,
                 outputTokens: parsed.eval_count || 0,
+                responseModel: typeof parsed.model === 'string' ? parsed.model : modelId,
               });
             }
           } catch {
@@ -435,10 +437,26 @@ export async function streamChatCompletion(
               if (parsed.type === 'message_start' && parsed.message?.usage) {
                 claudeInput = parsed.message.usage.input_tokens || 0;
                 claudeOutput = parsed.message.usage.output_tokens || 0;
-                if (onUsage) await onUsage({ inputTokens: claudeInput, outputTokens: claudeOutput });
+                if (onUsage) {
+                  await onUsage({
+                    inputTokens: claudeInput,
+                    outputTokens: claudeOutput,
+                    responseModel: parsed.message?.model || modelId,
+                    cacheCreationInputTokens: parsed.message.usage.cache_creation_input_tokens || 0,
+                    cacheReadInputTokens: parsed.message.usage.cache_read_input_tokens || 0,
+                  });
+                }
               } else if (parsed.type === 'message_delta' && parsed.usage) {
                 claudeOutput = parsed.usage.output_tokens || claudeOutput;
-                if (onUsage) await onUsage({ inputTokens: claudeInput, outputTokens: claudeOutput });
+                if (onUsage) {
+                  await onUsage({
+                    inputTokens: claudeInput,
+                    outputTokens: claudeOutput,
+                    responseModel: parsed.message?.model || modelId,
+                    cacheCreationInputTokens: parsed.usage.cache_creation_input_tokens || 0,
+                    cacheReadInputTokens: parsed.usage.cache_read_input_tokens || 0,
+                  });
+                }
               }
               if (parsed.type === 'content_block_delta') {
                 if (parsed.delta?.text) {
@@ -478,6 +496,10 @@ export async function streamChatCompletion(
                 await onUsage({
                   inputTokens: parsed.usage.prompt_tokens || 0,
                   outputTokens: parsed.usage.completion_tokens || 0,
+                  responseModel: typeof parsed.model === 'string' ? parsed.model : modelId,
+                  providerReportedCost: typeof parsed.usage.cost === 'number' ? parsed.usage.cost : undefined,
+                  cacheReadInputTokens: parsed.usage.prompt_tokens_details?.cached_tokens || 0,
+                  reasoningTokens: parsed.usage.completion_tokens_details?.reasoning_tokens || 0,
                 });
               }
               const delta = parsed.choices?.[0]?.delta;

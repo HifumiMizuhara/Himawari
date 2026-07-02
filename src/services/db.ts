@@ -36,6 +36,11 @@ export interface Citation {
 export interface TokenUsage {
   inputTokens: number;
   outputTokens: number;
+  responseModel?: string;
+  providerReportedCost?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  reasoningTokens?: number;
   estimated?: boolean; // true when derived locally (no API usage returned)
 }
 

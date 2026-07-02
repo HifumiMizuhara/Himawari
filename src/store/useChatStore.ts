@@ -408,7 +408,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       const accumulatedCitations: Citation[] = [];
       let accumulatedUsage: TokenUsage | null = null;
 
-      const applyUsage = async (usage: { inputTokens: number; outputTokens: number }) => {
+      const applyUsage = async (usage: TokenUsage) => {
         accumulatedUsage = { ...usage };
         await updateAssistantMessage((message) => ({
           ...message,
@@ -479,6 +479,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         const estimatedUsage: TokenUsage = {
           inputTokens: estimateTokens(inputText),
           outputTokens: estimateTokens(accumulatedText),
+          responseModel: modelId,
           estimated: true,
         };
         accumulatedUsage = estimatedUsage;

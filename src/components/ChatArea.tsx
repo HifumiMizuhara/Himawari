@@ -13,16 +13,17 @@ import {
   MAX_FILE_SIZE_BYTES,
   MAX_TOTAL_ATTACHMENT_BYTES,
 } from '../utils/fileParser';
-import { estimateTokens, computeCost, formatCost, DEFAULT_MODEL_PRICING } from '../utils/tokens';
+import { estimateTokens, formatCost, DEFAULT_MODEL_PRICING, selectUsageCost } from '../utils/tokens';
 import { claudeSupportsXHigh } from '../utils/providerCompatibility';
 import { SafeMarkdownLink } from '../utils/markdownComponents';
 import { sanitizeHref } from '../utils/safeUrl';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Check, User, Search, Code, Pencil, AlignLeft, Compass,
+  Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Check, User, Search, Pencil,
   ChevronLeft, ChevronRight, Columns, Scale, GitFork, Globe
 } from 'lucide-react';
+import { ModelIcon } from './ModelIcon';
 
 interface HeaderDropdownPortalProps {
   anchorRef: React.RefObject<HTMLDivElement | null>;
@@ -163,7 +164,7 @@ export const ChatArea: React.FC = () => {
       return !isInline ? (
         <CodeBlock lang={lang} code={codeVal} copyLabel={t.copy} copiedLabel={t.copied} />
       ) : (
-        <code className="bg-amber-500/8 dark:bg-amber-500/12 border border-amber-500/15 px-1.5 py-0.5 rounded-md text-[0.84em] text-amber-700 dark:text-amber-300 font-mono break-all font-medium" {...props}>
+        <code className="bg-blue-500/8 dark:bg-blue-500/12 border border-blue-500/15 px-1.5 py-0.5 rounded-md text-[0.84em] text-blue-700 dark:text-sky-300 font-mono break-all font-medium" {...props}>
           {children}
         </code>
       );
@@ -495,29 +496,124 @@ export const ChatArea: React.FC = () => {
     }
   };
 
-  const handleSuggestionClick = (text: string) => {
-    setInputText(text);
-    textareaRef.current?.focus();
-  };
+  const toolbarBtnClass = 'gemini-chip min-h-11 flex items-center space-x-1.5 px-3.5 py-1.5 hover:bg-white/90 dark:hover:bg-white/6 text-gray-700 dark:text-gray-200 rounded-full text-xs font-semibold transition-all active:scale-[0.98] cursor-pointer select-none backdrop-blur-xl';
+  const isEmptyChat = store.messages.length === 0;
 
-  const getProviderDot = (group: string) => {
-    const grp = group.toLowerCase();
-    if (grp.includes('gemini') || grp.includes('google')) return 'bg-blue-500';
-    if (grp.includes('openai') || grp.includes('chatgpt')) return 'bg-emerald-500';
-    if (grp.includes('claude') || grp.includes('anthropic')) return 'bg-amber-600';
-    if (grp.includes('deepseek')) return 'bg-cyan-500';
-    if (grp.includes('ollama')) return 'bg-purple-500';
-    if (grp.includes('openrouter')) return 'bg-violet-500';
-    return 'bg-amber-500';
-  };
+  const composerBox = (
+    <div
+      className={`relative flex w-full flex-col border rounded-[2rem] bg-white/88 dark:bg-[#171923]/90 shadow-[0_18px_50px_rgba(148,163,184,0.16)] dark:shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-2xl focus-within:border-blue-500/50 focus-within:ring-4 focus-within:ring-blue-500/10 transition-all duration-200 ${
+        isDragging ? 'border-blue-500 ring-4 ring-blue-500/20' : 'border-white/80 dark:border-white/8'
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[2rem] bg-blue-500/8 border-2 border-dashed border-blue-500/60 pointer-events-none">
+          <span className="text-blue-600 dark:text-sky-400 text-sm font-semibold">{t.dropFilesHere}</span>
+        </div>
+      )}
 
-  const toolbarBtnClass = 'min-h-11 flex items-center space-x-1.5 px-3 py-1.5 border border-border-light/60 dark:border-border-dark/50 hover:bg-card-light dark:hover:bg-card-dark text-gray-700 dark:text-gray-200 rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer select-none';
+      {attachments.length > 0 && (
+        <div className="flex flex-wrap gap-2 p-3 border-b border-border-light/30 dark:border-border-dark/30 rounded-t-2xl">
+          {attachments.map((att, idx) => (
+            <div key={idx} className="flex items-center space-x-2 bg-bg-light dark:bg-bg-dark px-3 py-1.5 rounded-xl border border-border-light dark:border-border-dark text-xs animate-scale-up shadow-sm">
+              {att.type === 'image' ? (
+                <img src={att.content} alt={att.name} className="w-6 h-6 rounded-md object-cover" />
+              ) : (
+                <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400" />
+              )}
+              <span className="max-w-[130px] truncate text-[11px] font-medium text-gray-700 dark:text-gray-300">{att.name}</span>
+              <button
+                onClick={() => removeAttachment(idx)}
+                aria-label={`${t.delete}: ${att.name}`}
+                className="p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 cursor-pointer transition-colors ml-0.5"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {fileUploadError && (
+        <div role="alert" className="flex items-start justify-between gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-950/25 border-b border-red-200/60 dark:border-red-800/40 text-[11px] text-red-600 dark:text-red-400 rounded-t-2xl">
+          <pre className="whitespace-pre-wrap font-sans">{fileUploadError}</pre>
+          <button onClick={() => setFileUploadError(null)} aria-label={t.close} className="shrink-0 mt-0.5 p-0.5 hover:text-red-700 cursor-pointer">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      <div className="flex items-end px-3 py-2.5">
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading}
+          aria-label={t.attachFile}
+          className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 rounded-xl hover:bg-bg-light/80 dark:hover:bg-bg-dark transition-colors cursor-pointer shrink-0"
+          title={t.attachFile}
+        >
+          <Paperclip className="w-4.5 h-4.5" />
+        </button>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileUpload}
+          multiple
+          accept="image/*,.pdf,.txt,.md,.csv,.tsv,.json,.yaml,.yml,.xml,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.cs,.go,.rs,.rb,.php,.swift,.kt,.sh,.sql,.html,.css,.scss,.vue,.svelte,.toml,.ini,.log"
+          className="hidden"
+        />
+
+        <textarea
+          ref={textareaRef}
+          rows={1}
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          placeholder={t.inputTextPlaceholder}
+          className="flex-1 px-3 py-2 bg-transparent focus:outline-none text-base sm:text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 resize-none max-h-[200px]"
+        />
+
+        {isActiveChatGenerating ? (
+          <button
+            onClick={store.stopGeneration}
+            aria-label={t.stop}
+            className="min-w-11 min-h-11 flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-xl shadow-lg shadow-red-500/20 transition-colors cursor-pointer shrink-0 active:scale-95 duration-150"
+            title={t.stop}
+          >
+            <Square className="w-4 h-4 fill-white" />
+          </button>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={!inputText.trim() && attachments.length === 0}
+            aria-label={t.send}
+            className={`min-w-11 min-h-11 flex items-center justify-center rounded-2xl transition-all shrink-0 active:scale-95 duration-150 ${
+              inputText.trim() || attachments.length > 0
+                ? 'bg-blue-600 text-white cursor-pointer hover:bg-blue-700 shadow-md shadow-blue-500/20 hover:shadow-blue-500/30'
+                : 'text-gray-300 dark:text-gray-600 bg-transparent cursor-not-allowed'
+            }`}
+            title={t.send}
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  const composerTokenHint = estimatedInputTokens > 0 ? (
+    <p className="text-[10px] text-gray-400/60 dark:text-gray-600 text-center mt-2 font-mono select-none">
+      ~{estimatedInputTokens}{t.tokens}
+    </p>
+  ) : null;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-bg-light dark:bg-bg-dark text-gray-800 dark:text-gray-100 relative overflow-hidden">
+    <div className="flex-1 flex flex-col h-full text-gray-800 dark:text-gray-100 relative overflow-hidden md:ml-3 rounded-[2rem] bg-white/22 dark:bg-white/[0.03] border border-white/50 dark:border-white/6 shadow-[0_18px_48px_rgba(148,163,184,0.12)] dark:shadow-[0_20px_60px_rgba(0,0,0,0.28)] backdrop-blur-xl">
 
       {/* Top Header Bar */}
-      <div className="flex items-center justify-between gap-2 border-b border-border-light/60 dark:border-border-dark pr-3 md:pr-5 py-2 min-h-[54px] select-none shrink-0 pl-16 md:pl-5 bg-bg-light/85 dark:bg-bg-dark/85 backdrop-blur-md z-30">
+      <div className="flex items-center justify-between gap-2 pr-3 md:pr-6 pt-4 pb-2 min-h-[64px] select-none shrink-0 pl-16 md:pl-6 bg-transparent z-30">
 
         <div className="flex flex-nowrap md:flex-wrap items-center gap-1.5 flex-1 min-w-0 overflow-x-auto md:overflow-visible no-scrollbar">
 
@@ -532,7 +628,12 @@ export const ChatArea: React.FC = () => {
               aria-expanded={showModelDropdown}
               className={toolbarBtnClass}
             >
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${getProviderDot(activeModel.group)}`} />
+              <ModelIcon
+                providerId={activeModel.providerId}
+                providerName={activeModel.group}
+                modelId={activeModel.id}
+                className="w-5 h-5"
+              />
               <span className="font-heading truncate max-w-[64px] sm:max-w-[200px]">{activeModel.name}</span>
               <ChevronDown className="w-3.5 h-3.5 text-gray-400 shrink-0" />
             </button>
@@ -550,7 +651,7 @@ export const ChatArea: React.FC = () => {
                   placeholder={t.searchModels}
                   value={modelSearchQuery}
                   onChange={(e) => setModelSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 bg-bg-light dark:bg-bg-dark/80 text-xs border border-border-light dark:border-white/8 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                  className="w-full pl-8 pr-3 py-1.5 bg-bg-light dark:bg-bg-dark/80 text-xs border border-border-light dark:border-white/8 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 text-gray-900 dark:text-gray-100 placeholder-gray-400"
                   autoFocus
                 />
                 <Search className="absolute left-4 top-[15px] w-3.5 h-3.5 text-gray-400" />
@@ -569,15 +670,23 @@ export const ChatArea: React.FC = () => {
                         <button
                           key={`${model.providerId}:${model.id}`}
                           onClick={() => handleModelSelect(model.providerId, model.id)}
-                          className={`w-full text-left px-3.5 py-2.5 rounded-lg text-xs hover:bg-amber-500/6 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 flex items-center justify-between transition-colors cursor-pointer ${
+                          className={`w-full text-left px-3.5 py-2.5 rounded-lg text-xs hover:bg-blue-500/6 dark:hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-sky-400 flex items-center justify-between transition-colors cursor-pointer ${
                             store.activeModelId === model.id && store.activeProviderId === model.providerId
-                              ? 'text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/6 dark:bg-amber-500/10'
+                              ? 'text-blue-600 dark:text-sky-400 font-semibold bg-blue-500/6 dark:bg-blue-500/10'
                               : 'text-gray-700 dark:text-gray-300'
                           }`}
                         >
-                          <span className="truncate pr-4 font-medium">{model.name}</span>
+                          <span className="flex min-w-0 items-center gap-2 pr-4">
+                            <ModelIcon
+                              providerId={model.providerId}
+                              providerName={model.group}
+                              modelId={model.id}
+                              className="w-4.5 h-4.5"
+                            />
+                            <span className="truncate font-medium">{model.name}</span>
+                          </span>
                           {store.activeModelId === model.id && store.activeProviderId === model.providerId && (
-                            <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                            <Check className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400 shrink-0" />
                           )}
                         </button>
                       ))}
@@ -633,12 +742,12 @@ export const ChatArea: React.FC = () => {
                         value={customEffortValue}
                         onChange={(e) => setCustomEffortValue(e.target.value)}
                         placeholder={t.effortCustomPlaceholder}
-                        className="flex-1 px-2 py-1 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                        className="flex-1 px-2 py-1 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
                         autoFocus
                       />
                       <button
                         type="submit"
-                        className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold cursor-pointer transition-colors"
+                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold cursor-pointer transition-colors"
                       >
                         OK
                       </button>
@@ -647,7 +756,7 @@ export const ChatArea: React.FC = () => {
                     <button
                       key={opt.value}
                       onClick={() => setCustomEffortVisible(true)}
-                      className="w-full text-left px-3.5 py-2 rounded-lg text-xs hover:bg-amber-500/6 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-gray-700 dark:text-gray-300"
+                      className="w-full text-left px-3.5 py-2 rounded-lg text-xs hover:bg-blue-500/6 dark:hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-sky-400 transition-colors cursor-pointer text-gray-700 dark:text-gray-300"
                     >
                       {opt.label}
                     </button>
@@ -659,14 +768,14 @@ export const ChatArea: React.FC = () => {
                       store.setActiveEffort(opt.value);
                       setShowEffortDropdown(false);
                     }}
-                    className={`w-full text-left px-3.5 py-2 rounded-lg text-xs hover:bg-amber-500/6 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 flex items-center justify-between transition-colors cursor-pointer ${
+                    className={`w-full text-left px-3.5 py-2 rounded-lg text-xs hover:bg-blue-500/6 dark:hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-sky-400 flex items-center justify-between transition-colors cursor-pointer ${
                       store.activeEffort === opt.value
-                        ? 'text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/6 dark:bg-amber-500/10'
+                        ? 'text-blue-600 dark:text-sky-400 font-semibold bg-blue-500/6 dark:bg-blue-500/10'
                         : 'text-gray-700 dark:text-gray-300'
                     }`}
                   >
                     <span>{opt.label}</span>
-                    {store.activeEffort === opt.value && <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
+                    {store.activeEffort === opt.value && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400" />}
                   </button>
                 )
               )}
@@ -681,7 +790,7 @@ export const ChatArea: React.FC = () => {
               aria-label={t.webSearchLabel}
               className={`${toolbarBtnClass} ${
                 store.activeWebSearch
-                  ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
+                  ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-sky-400'
                   : ''
               }`}
             >
@@ -716,7 +825,7 @@ export const ChatArea: React.FC = () => {
                   <button
                     key={p.id}
                     onClick={() => applyPromptPreset(p.content)}
-                    className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-amber-500/6 dark:hover:bg-amber-500/10 transition-colors cursor-pointer"
+                    className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-blue-500/6 dark:hover:bg-blue-500/10 transition-colors cursor-pointer"
                     title={p.content}
                   >
                     <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{p.name}</span>
@@ -729,71 +838,33 @@ export const ChatArea: React.FC = () => {
         </div>
 
         {/* Status indicator */}
-        <div aria-live="polite" className={`flex items-center space-x-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full hidden sm:flex transition-all ${
+        <div aria-live="polite" className={`gemini-chip flex items-center space-x-1.5 text-[10px] font-semibold px-3 py-1.5 rounded-full hidden sm:flex transition-all ${
           isActiveChatGenerating
-            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
-            : 'bg-card-light/60 dark:bg-card-dark/60 text-gray-400 dark:text-gray-500 border border-border-light/40 dark:border-border-dark/40'
+            ? 'text-blue-600 dark:text-sky-400'
+            : 'text-gray-400 dark:text-gray-500'
         }`}>
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActiveChatGenerating ? 'bg-amber-500 animate-ping' : 'bg-gray-300 dark:bg-gray-600'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActiveChatGenerating ? 'bg-blue-500 animate-ping' : 'bg-gray-300 dark:bg-gray-600'}`} />
           <span className="font-mono tracking-wide">{isActiveChatGenerating ? t.generating : t.idle}</span>
         </div>
       </div>
 
-      {/* Message History */}
-      <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto px-4 py-8 md:px-8">
-
-        {store.messages.length === 0 ? (
-          /* Empty / Welcome state */
-          <div className="flex flex-col items-center justify-center min-h-[85%] max-w-xl mx-auto text-center space-y-8 animate-fade-in py-10">
-
-            {/* Animated sunflower icon */}
-            <div className="relative w-24 h-24 rounded-3xl bg-gradient-to-tr from-amber-500/12 to-yellow-400/12 flex items-center justify-center text-amber-600 dark:text-amber-500 border border-amber-500/12 animate-pulse-slow shadow-lg shadow-amber-500/5">
-              <svg viewBox="0 0 24 24" className="w-12 h-12 fill-current" style={{ animation: 'spin 40s linear infinite' }} xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2.25a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75ZM12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75ZM5.106 5.106a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06Zm11.668 11.668a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06ZM2.25 12a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5H3a.75.75 0 0 1-.75-.75Zm15.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75ZM5.106 18.894a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Zm11.668-11.668a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Z" />
-              </svg>
-            </div>
-
-            <div className="space-y-3">
-              <h2 className="text-4xl font-extrabold tracking-tight font-heading leading-tight bg-clip-text text-transparent bg-gradient-to-br from-gray-900 via-gray-700 to-amber-600 dark:from-white dark:via-gray-100 dark:to-amber-400">
+      {isEmptyChat ? (
+        <div className="flex-1 flex flex-col items-center justify-center min-h-0 px-4 md:px-8 pb-8">
+          <div className="w-full max-w-2xl space-y-6 animate-fade-in">
+            <div className="text-center space-y-2 px-2">
+              <h2 className="text-3xl md:text-[2.75rem] font-normal tracking-tight leading-tight text-slate-900 dark:text-white">
                 {t.howCanIHelp}
               </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                {t.howCanIHelpSub}
-              </p>
             </div>
-
-            {/* Suggestion cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
-              {[
-                { title: t.sugCodeTitle, prompt: t.sugCodePrompt, icon: <Code className="w-4.5 h-4.5 text-amber-600 dark:text-amber-500" /> },
-                { title: t.sugMailTitle, prompt: t.sugMailPrompt, icon: <Pencil className="w-4.5 h-4.5 text-amber-600 dark:text-amber-500" /> },
-                { title: t.sugSumTitle, prompt: t.sugSumPrompt, icon: <AlignLeft className="w-4.5 h-4.5 text-amber-600 dark:text-amber-500" /> },
-                { title: t.sugWebgpuTitle, prompt: t.sugWebgpuPrompt, icon: <Compass className="w-4.5 h-4.5 text-amber-600 dark:text-amber-500" /> },
-              ].map((card, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleSuggestionClick(card.prompt)}
-                  className="p-4 text-left border border-border-light dark:border-border-dark bg-card-light/70 dark:bg-card-dark/30 hover:bg-card-light dark:hover:bg-card-dark/70 rounded-2xl transition-all duration-200 cursor-pointer group hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/25 hover:border-amber-200/70 dark:hover:border-amber-800/40 flex space-x-3 items-start"
-                >
-                  <div className="p-2.5 bg-amber-500/10 dark:bg-amber-500/12 rounded-xl shrink-0 group-hover:bg-amber-500/18 transition-colors mt-0.5">
-                    {card.icon}
-                  </div>
-                  <div className="space-y-1 min-w-0">
-                    <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
-                      {card.title}
-                    </h4>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">
-                      {card.prompt}
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
+            {composerBox}
+            {composerTokenHint}
           </div>
-        ) : (
-          /* Conversation */
-          <div className="max-w-3xl mx-auto space-y-8 pb-10">
-            {store.messages.map((msg, index) => {
+        </div>
+      ) : (
+        <>
+          <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-8 min-h-0">
+            <div className="max-w-4xl mx-auto space-y-10 pb-10">
+              {store.messages.map((msg, index) => {
               const isUser = msg.role === 'user';
               const isEditing = isUser && editingMessageId === msg.id;
               const hasVariants = !isUser && msg.variants && msg.variants.length > 1;
@@ -806,17 +877,17 @@ export const ChatArea: React.FC = () => {
                   key={msg.id}
                   id={`message-${msg.id}`}
                   className={`flex space-x-3 ${isUser ? 'justify-end' : 'justify-start'} animate-slide-up group transition-all duration-200 ${
-                    highlightedMessageId === msg.id ? 'ring-2 ring-amber-500/30 ring-offset-8 ring-offset-bg-light dark:ring-offset-bg-dark rounded-3xl' : ''
+                    highlightedMessageId === msg.id ? 'ring-2 ring-blue-500/25 ring-offset-8 ring-offset-transparent rounded-3xl' : ''
                   }`}
                 >
 
-                  {/* AI Avatar */}
+                  {/* AI Avatar — provider/model icon */}
                   {!isUser && (
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-600 to-yellow-500 flex items-center justify-center text-white shrink-0 select-none shadow-md shadow-amber-500/15 border border-amber-400/20 mt-0.5">
-                      <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 2.25a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75ZM12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75ZM5.106 5.106a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06Zm11.668 11.668a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06ZM2.25 12a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5H3a.75.75 0 0 1-.75-.75Zm15.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75ZM5.106 18.894a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Zm11.668-11.668a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Z" />
-                      </svg>
-                    </div>
+                    <ModelIcon
+                      providerId={msg.modelProviderId}
+                      modelId={msg.modelUsed || activeModel.id}
+                      className="w-8 h-8 shrink-0 mt-0.5"
+                    />
                   )}
 
                   {/* Message bubble wrapper */}
@@ -858,8 +929,8 @@ export const ChatArea: React.FC = () => {
                           aria-label={isCompareMode ? t.normalView : t.compareView}
                           className={`flex items-center space-x-1 px-2 py-0.5 rounded-lg border transition-all cursor-pointer text-[9px] font-semibold ${
                             isCompareMode
-                              ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25'
-                              : 'bg-card-light dark:bg-card-dark border-border-light/50 dark:border-border-dark/50 text-gray-400 hover:text-amber-600'
+                              ? 'bg-blue-500/10 text-blue-600 dark:text-sky-400 border-blue-500/25'
+                              : 'bg-card-light/70 dark:bg-card-dark/60 border-border-light/50 dark:border-border-dark/50 text-gray-400 hover:text-blue-600'
                           }`}
                         >
                           <Columns className="w-2.5 h-2.5" />
@@ -874,7 +945,7 @@ export const ChatArea: React.FC = () => {
                         <div className="flex justify-end mb-2">
                           <button
                             onClick={() => setCompareStates({ ...compareStates, [msg.id]: false })}
-                            className="flex items-center space-x-1 px-2.5 py-1 rounded-lg border border-border-light/50 dark:border-border-dark/50 bg-card-light dark:bg-card-dark text-[10px] font-semibold text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
+                            className="flex items-center space-x-1 px-2.5 py-1 rounded-lg border border-border-light/50 dark:border-border-dark/50 bg-card-light dark:bg-card-dark text-[10px] font-semibold text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 transition-colors cursor-pointer"
                           >
                             <ChevronLeft className="w-3 h-3" />
                             <span>{t.normalView}</span>
@@ -886,19 +957,26 @@ export const ChatArea: React.FC = () => {
                               key={v.id}
                               className={`p-5 rounded-2xl border transition-all ${
                                 activeIndex === vIdx
-                                  ? 'border-amber-500/40 bg-amber-500/[0.02] dark:bg-amber-500/[0.03] shadow-sm shadow-amber-500/5'
+                                  ? 'border-blue-500/30 bg-blue-500/[0.03] dark:bg-blue-500/[0.05] shadow-sm shadow-blue-500/8'
                                   : 'border-border-light dark:border-border-dark bg-card-light/50 dark:bg-card-dark/30 hover:border-gray-200 dark:hover:border-gray-700'
                               }`}
                             >
                               <div className="flex items-center justify-between text-[9px] text-gray-400 font-bold mb-3 pb-2 border-b border-border-light/40 dark:border-border-dark/40 select-none">
-                                <span className="truncate pr-4 font-mono">{v.modelUsed || 'Model'}</span>
+                                <span className="flex min-w-0 items-center gap-2 truncate pr-4 font-mono">
+                                  <ModelIcon
+                                    providerId={v.modelProviderId}
+                                    modelId={v.modelUsed}
+                                    className="w-4 h-4"
+                                  />
+                                  <span className="truncate">{v.modelUsed || 'Model'}</span>
+                                </span>
                                 <div className="flex items-center space-x-2 shrink-0">
                                   <span>#{vIdx + 1}</span>
                                   {activeIndex !== vIdx && (
                                     <button
                                       onClick={() => store.switchMessageVariant(msg.id, vIdx)}
                                       aria-label={t.setActive}
-                                      className="px-1.5 py-0.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded cursor-pointer transition-colors text-[8px] font-bold"
+                                      className="px-1.5 py-0.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-sky-400 rounded cursor-pointer transition-colors text-[8px] font-bold"
                                     >
                                       {t.setActive}
                                     </button>
@@ -912,7 +990,7 @@ export const ChatArea: React.FC = () => {
                                       type="button"
                                       onClick={() => setThinkingOpen({ ...thinkingOpen, [`${msg.id}-${vIdx}`]: !(thinkingOpen[`${msg.id}-${vIdx}`] !== undefined ? thinkingOpen[`${msg.id}-${vIdx}`] : true) })}
                                       aria-expanded={thinkingOpen[`${msg.id}-${vIdx}`] !== undefined ? thinkingOpen[`${msg.id}-${vIdx}`] : true}
-                                      className="min-h-11 w-full flex items-center space-x-2 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer font-bold py-1 border-b border-border-light/30 dark:border-border-dark/30 font-sans"
+                                      className="min-h-11 w-full flex items-center space-x-2 text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 cursor-pointer font-bold py-1 border-b border-border-light/30 dark:border-border-dark/30 font-sans"
                                     >
                                       <span className={`transition-transform duration-200 text-[10px] ${(thinkingOpen[`${msg.id}-${vIdx}`] !== undefined ? thinkingOpen[`${msg.id}-${vIdx}`] : true) ? 'rotate-90' : ''}`}>▶</span>
                                       <span>{t.thinkingProcess}</span>
@@ -942,8 +1020,8 @@ export const ChatArea: React.FC = () => {
                       /* Standard message bubble */
                       <div className={`rounded-2xl text-sm leading-relaxed break-words border w-full ${
                         isUser
-                          ? 'px-5 py-4 bg-amber-50/90 dark:bg-amber-950/20 border-amber-200/50 dark:border-amber-800/25 text-gray-800 dark:text-gray-100 shadow-sm shadow-amber-500/5'
-                          : 'px-5 py-4 bg-card-light/80 dark:bg-card-dark/70 border-border-light dark:border-border-dark text-gray-800 dark:text-gray-100 shadow-sm prose dark:prose-invert max-w-none'
+                          ? 'px-5 py-4 bg-white/82 dark:bg-white/[0.06] border-white/80 dark:border-white/8 text-gray-800 dark:text-gray-100 shadow-sm backdrop-blur-xl'
+                          : 'px-1 py-1 bg-transparent border-transparent text-gray-800 dark:text-gray-100 prose dark:prose-invert max-w-none shadow-none'
                       }`}>
 
                         {/* Attached files */}
@@ -954,7 +1032,7 @@ export const ChatArea: React.FC = () => {
                                 {att.type === 'image' ? (
                                   <img src={att.content} alt={att.name} className="w-9 h-9 rounded-lg object-cover" />
                                 ) : (
-                                  <FileText className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0" />
+                                  <FileText className="w-4 h-4 text-blue-600 dark:text-sky-400 shrink-0" />
                                 )}
                                 <div className="text-left min-w-0">
                                   <p className="text-[11px] font-semibold truncate max-w-[200px] text-gray-800 dark:text-gray-200">{att.name}</p>
@@ -972,12 +1050,12 @@ export const ChatArea: React.FC = () => {
                               type="button"
                               onClick={() => setThinkingOpen({ ...thinkingOpen, [msg.id]: !(thinkingOpen[msg.id] !== undefined ? thinkingOpen[msg.id] : true) })}
                               aria-expanded={thinkingOpen[msg.id] !== undefined ? thinkingOpen[msg.id] : true}
-                              className="flex items-center space-x-2 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer font-semibold text-xs py-1.5 border-b border-border-light/30 dark:border-border-dark/30 w-full text-left font-sans transition-colors"
+                              className="flex items-center space-x-2 text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 cursor-pointer font-semibold text-xs py-1.5 border-b border-border-light/30 dark:border-border-dark/30 w-full text-left font-sans transition-colors"
                             >
                               <span className={`transition-transform duration-200 text-[10px] ${(thinkingOpen[msg.id] !== undefined ? thinkingOpen[msg.id] : true) ? 'rotate-90' : ''}`}>▶</span>
                               <span>{t.thinkingProcess}</span>
                               {isActiveChatGenerating && index === store.messages.length - 1 && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse ml-1 shrink-0" />
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse ml-1 shrink-0" />
                               )}
                             </button>
                             {(thinkingOpen[msg.id] !== undefined ? thinkingOpen[msg.id] : true) && (
@@ -999,7 +1077,7 @@ export const ChatArea: React.FC = () => {
                                       {att.type === 'image' ? (
                                         <img src={att.content} alt={att.name} className="w-9 h-9 rounded-lg object-cover" />
                                       ) : (
-                                        <FileText className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0" />
+                                        <FileText className="w-4 h-4 text-blue-600 dark:text-sky-400 shrink-0" />
                                       )}
                                       <div className="text-left min-w-0">
                                         <p className="text-[11px] font-semibold truncate max-w-[200px] text-gray-800 dark:text-gray-200">{att.name}</p>
@@ -1026,7 +1104,7 @@ export const ChatArea: React.FC = () => {
                                 }}
                                 rows={4}
                                 autoFocus
-                                className="w-full min-h-[120px] px-4 py-3 bg-white/80 dark:bg-bg-dark/60 border border-amber-500/30 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 resize-y text-gray-900 dark:text-gray-100 text-sm"
+                                className="w-full min-h-[120px] px-4 py-3 bg-white/80 dark:bg-bg-dark/60 border border-blue-500/30 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 resize-y text-gray-900 dark:text-gray-100 text-sm"
                               />
 
                               <div className="flex items-center justify-between gap-2">
@@ -1034,14 +1112,14 @@ export const ChatArea: React.FC = () => {
                                 <div className="flex items-center space-x-2">
                                   <button
                                     onClick={handleCancelEdit}
-                                    className="px-3 py-1.5 rounded-xl border border-border-light dark:border-border-dark text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
+                                    className="px-3 py-1.5 rounded-xl border border-border-light dark:border-border-dark text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-sky-400 transition-colors cursor-pointer"
                                   >
                                     {t.cancel}
                                   </button>
                                   <button
                                     onClick={() => void handleSaveEdit(msg.id, index)}
                                     disabled={!editingText.trim() || isActiveChatGenerating}
-                                    className="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-[11px] font-semibold hover:bg-amber-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="px-3 py-1.5 rounded-xl bg-blue-600 text-white text-[11px] font-semibold hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                                   >
                                     {t.saveAndRegenerate}
                                   </button>
@@ -1078,7 +1156,7 @@ export const ChatArea: React.FC = () => {
                         <button
                           onClick={() => handleStartEdit(msg.id, msg.content)}
                           disabled={isActiveChatGenerating}
-                          className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans disabled:opacity-40 disabled:cursor-not-allowed"
                           title={t.edit}
                         >
                           <Pencil className="w-3 h-3" />
@@ -1116,7 +1194,7 @@ export const ChatArea: React.FC = () => {
                               setCompareDropdownOpen(compareDropdownOpen === msg.id ? null : msg.id);
                             }}
                             aria-label={t.compare}
-                            className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
+                            className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
                             title={t.compare}
                           >
                             <Scale className="w-3 h-3" />
@@ -1135,7 +1213,7 @@ export const ChatArea: React.FC = () => {
                                   value={compareSearchQuery}
                                   onChange={(e) => setCompareSearchQuery(e.target.value)}
                                   onClick={(e) => e.stopPropagation()}
-                                  className="w-full pl-7 pr-2 py-1.5 bg-bg-light dark:bg-bg-dark/80 text-[10px] border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/10 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                                  className="w-full pl-7 pr-2 py-1.5 bg-bg-light dark:bg-bg-dark/80 text-[10px] border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/10 text-gray-900 dark:text-gray-100 placeholder-gray-400"
                                   autoFocus
                                 />
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
@@ -1150,11 +1228,19 @@ export const ChatArea: React.FC = () => {
                                       setCompareDropdownOpen(null);
                                       setCompareStates({ ...compareStates, [msg.id]: true });
                                     }}
-                                    className="w-full text-left px-2.5 py-1.5 rounded-md text-[10px] text-gray-700 dark:text-gray-300 hover:bg-amber-500/6 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer truncate font-medium"
+                                    className="w-full text-left px-2.5 py-1.5 rounded-md text-[10px] text-gray-700 dark:text-gray-300 hover:bg-blue-500/6 dark:hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-sky-400 transition-colors cursor-pointer truncate font-medium"
                                     title={m.name}
                                   >
-                                    {m.name}
-                                    <span className="ml-1 text-gray-400">({m.group})</span>
+                                    <span className="flex min-w-0 items-center gap-1.5">
+                                      <ModelIcon
+                                        providerId={m.providerId}
+                                        providerName={m.group}
+                                        modelId={m.id}
+                                        className="w-4 h-4"
+                                      />
+                                      <span className="truncate">{m.name}</span>
+                                      <span className="shrink-0 text-gray-400">({m.group})</span>
+                                    </span>
                                   </button>
                                 ))
                               }
@@ -1169,7 +1255,7 @@ export const ChatArea: React.FC = () => {
                             confirmLabel: t.branchCreate,
                             onConfirm: () => store.createBranch(index),
                           })}
-                          className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
+                          className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
                           title={t.branchCreate}
                         >
                           <GitFork className="w-3 h-3" />
@@ -1188,125 +1274,23 @@ export const ChatArea: React.FC = () => {
                 </div>
               );
             })}
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* Composer */}
-      <div className="px-3 sm:px-4 pt-3 pb-safe shrink-0">
-        <div
-          className={`max-w-3xl mx-auto relative flex flex-col border rounded-2xl bg-card-light/95 dark:bg-card-dark/97 shadow-xl shadow-black/6 dark:shadow-black/35 backdrop-blur-xl focus-within:border-amber-500/60 focus-within:ring-2 focus-within:ring-amber-500/10 transition-all duration-200 ${
-            isDragging ? 'border-amber-500 ring-2 ring-amber-500/25' : 'border-border-light dark:border-border-dark'
-          }`}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {isDragging && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-amber-500/8 border-2 border-dashed border-amber-500/60 pointer-events-none">
-              <span className="text-amber-600 dark:text-amber-400 text-sm font-semibold">{t.dropFilesHere}</span>
+          <div className="px-3 sm:px-4 pt-3 pb-safe shrink-0">
+            <div className="max-w-4xl mx-auto">
+              {composerBox}
+              {composerTokenHint}
             </div>
-          )}
-
-          {/* Attachment chips */}
-          {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 p-3 border-b border-border-light/30 dark:border-border-dark/30 rounded-t-2xl">
-              {attachments.map((att, idx) => (
-                <div key={idx} className="flex items-center space-x-2 bg-bg-light dark:bg-bg-dark px-3 py-1.5 rounded-xl border border-border-light dark:border-border-dark text-xs animate-scale-up shadow-sm">
-                  {att.type === 'image' ? (
-                    <img src={att.content} alt={att.name} className="w-6 h-6 rounded-md object-cover" />
-                  ) : (
-                    <FileText className="w-3.5 h-3.5 text-amber-600 dark:text-amber-500" />
-                  )}
-                  <span className="max-w-[130px] truncate text-[11px] font-medium text-gray-700 dark:text-gray-300">{att.name}</span>
-                  <button
-                    onClick={() => removeAttachment(idx)}
-                    aria-label={`${t.delete}: ${att.name}`}
-                    className="p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 cursor-pointer transition-colors ml-0.5"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* File error */}
-          {fileUploadError && (
-            <div role="alert" className="flex items-start justify-between gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-950/25 border-b border-red-200/60 dark:border-red-800/40 text-[11px] text-red-600 dark:text-red-400 rounded-t-2xl">
-              <pre className="whitespace-pre-wrap font-sans">{fileUploadError}</pre>
-              <button onClick={() => setFileUploadError(null)} aria-label={t.close} className="shrink-0 mt-0.5 p-0.5 hover:text-red-700 cursor-pointer">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-          {/* Input row */}
-          <div className="flex items-end px-3 py-2.5">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              aria-label={t.attachFile}
-              className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 rounded-xl hover:bg-bg-light dark:hover:bg-bg-dark transition-colors cursor-pointer shrink-0"
-              title={t.attachFile}
-            >
-              <Paperclip className="w-4.5 h-4.5" />
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              multiple
-              accept="image/*,.pdf,.txt,.md,.csv,.tsv,.json,.yaml,.yml,.xml,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.cs,.go,.rs,.rb,.php,.swift,.kt,.sh,.sql,.html,.css,.scss,.vue,.svelte,.toml,.ini,.log"
-              className="hidden"
-            />
-
-            <textarea
-              ref={textareaRef}
-              rows={1}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              placeholder={t.inputTextPlaceholder}
-              className="flex-1 px-3 py-2 bg-transparent focus:outline-none text-base sm:text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 resize-none max-h-[200px]"
-            />
-
-            {isActiveChatGenerating ? (
-              <button
-                onClick={store.stopGeneration}
-                aria-label={t.stop}
-                className="min-w-11 min-h-11 flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-xl shadow-lg shadow-red-500/20 transition-colors cursor-pointer shrink-0 active:scale-95 duration-150"
-                title={t.stop}
-              >
-                <Square className="w-4 h-4 fill-white" />
-              </button>
-            ) : (
-              <button
-                onClick={handleSend}
-                disabled={!inputText.trim() && attachments.length === 0}
-                aria-label={t.send}
-                className={`min-w-11 min-h-11 flex items-center justify-center rounded-xl transition-all shrink-0 active:scale-95 duration-150 ${
-                  inputText.trim() || attachments.length > 0
-                    ? 'bg-amber-600 text-white cursor-pointer hover:bg-amber-700 shadow-md shadow-amber-500/20 hover:shadow-amber-500/30'
-                    : 'text-gray-300 dark:text-gray-600 bg-transparent cursor-not-allowed'
-                }`}
-                title={t.send}
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            )}
           </div>
-        </div>
+        </>
+      )}
 
-        {/* Footer hint */}
-        <p className="text-[10px] text-gray-400/60 dark:text-gray-600 text-center mt-2 font-sans select-none">
-          {estimatedInputTokens > 0 && (
-            <span className="font-mono mr-1.5">~{estimatedInputTokens}{t.tokens} · </span>
-          )}
+      <footer className="shrink-0 px-4 pt-1 pb-safe text-center">
+        <p className="text-[10px] text-gray-400/60 dark:text-gray-600 font-sans select-none">
           {t.disclaimer}
         </p>
-      </div>
+      </footer>
 
       {/* Confirm dialog */}
       {confirmDialog && (
@@ -1317,7 +1301,7 @@ export const ChatArea: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setConfirmDialog(null)}
-                className="min-h-11 px-4 py-2 rounded-xl border border-border-light dark:border-border-dark text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer transition-colors"
+                className="min-h-11 px-4 py-2 rounded-xl border border-border-light dark:border-border-dark text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-sky-400 cursor-pointer transition-colors"
               >
                 {t.cancel}
               </button>
@@ -1328,7 +1312,7 @@ export const ChatArea: React.FC = () => {
                   setConfirmDialog(null);
                   await next.onConfirm();
                 }}
-                className="min-h-11 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-semibold text-white cursor-pointer transition-colors"
+                className="min-h-11 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-semibold text-white cursor-pointer transition-colors"
               >
                 {confirmDialog.confirmLabel || t.ok}
               </button>
@@ -1363,7 +1347,7 @@ const Sources: React.FC<{ citations: Citation[]; label: string }> = ({ citations
               <span className="truncate">{c.title || hostOf(c.url)}</span>
             </>
           );
-          const className = "flex items-center space-x-1.5 max-w-[260px] px-2.5 py-1 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-[11px] text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-500/30 transition-colors";
+          const className = "flex items-center space-x-1.5 max-w-[260px] px-2.5 py-1 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-[11px] text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-sky-400 hover:border-blue-500/30 transition-colors";
           if (!safeHref) {
             return (
               <span key={`${c.url}-${i}`} title={c.title || c.url} className={`${className} cursor-default`}>
@@ -1396,14 +1380,31 @@ const UsageBadge: React.FC<{
   t: { inLabel: string; outLabel: string; tokens: string };
 }> = ({ usage, modelId, pricing, t }) => {
   const total = usage.inputTokens + usage.outputTokens;
-  const cost = computeCost(modelId, usage.inputTokens, usage.outputTokens, pricing);
+  const effectiveModelId = usage.responseModel || modelId;
+  const { cost, estimated: costEstimated } = selectUsageCost(effectiveModelId, usage, pricing);
+  const cacheRead = usage.cacheReadInputTokens || 0;
+  const cacheWrite = usage.cacheCreationInputTokens || 0;
+  const reasoningTokens = usage.reasoningTokens || 0;
   return (
     <div className="flex items-center space-x-2 px-1 mt-1 text-[10px] font-mono text-gray-400/70 dark:text-gray-500/70 select-none">
       <span title={`${t.inLabel}: ${usage.inputTokens} / ${t.outLabel}: ${usage.outputTokens}`}>
         {usage.inputTokens}↑ {usage.outputTokens}↓ · {total} {t.tokens}
       </span>
+      {(cacheRead > 0 || cacheWrite > 0 || reasoningTokens > 0) && (
+        <span
+          title={[
+            cacheRead > 0 ? `cache read: ${cacheRead}` : null,
+            cacheWrite > 0 ? `cache write: ${cacheWrite}` : null,
+            reasoningTokens > 0 ? `reasoning: ${reasoningTokens}` : null,
+          ].filter(Boolean).join(' / ')}
+        >
+          {cacheRead > 0 && <span>· CR {cacheRead}</span>}
+          {cacheWrite > 0 && <span> · CW {cacheWrite}</span>}
+          {reasoningTokens > 0 && <span> · R {reasoningTokens}</span>}
+        </span>
+      )}
       {cost != null && (
-        <span className="text-amber-600/60 dark:text-amber-500/60">· {usage.estimated ? '~' : ''}{formatCost(cost)}</span>
+        <span className="text-blue-600/60 dark:text-sky-400/60">· {(usage.estimated || costEstimated) ? '~' : ''}{formatCost(cost)}</span>
       )}
     </div>
   );
@@ -1432,7 +1433,7 @@ const ActionButton: React.FC<{
   return (
     <button
       onClick={handleAction}
-      className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
+      className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
     >
       {clicked ? <Check className="w-3 h-3 text-emerald-500 animate-scale-up" /> : icon}
       <span>{clicked && successLabel ? successLabel : label}</span>
@@ -1469,7 +1470,7 @@ const CodeBlock = ({
         <span className="font-bold uppercase tracking-wider text-zinc-500">{lang || 'text'}</span>
         <button
           onClick={handleCopy}
-          className="flex items-center space-x-1.5 text-zinc-500 hover:text-amber-400 transition-colors cursor-pointer font-sans font-semibold"
+          className="flex items-center space-x-1.5 text-zinc-500 hover:text-sky-400 transition-colors cursor-pointer font-sans font-semibold"
         >
           {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
           <span>{copied ? copiedLabel : copyLabel}</span>

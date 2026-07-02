@@ -44,6 +44,7 @@ export const DEFAULT_MODEL_PRICING: Record<string, ModelPrice> = {
   'claude-3-5-haiku': { input: 0.8, output: 4 },
   'claude-3-5-sonnet': { input: 3, output: 15 },
   'claude-3-7-sonnet': { input: 3, output: 15 },
+  'claude-fable-5': { input: 10, output: 50 },
   'claude-sonnet': { input: 3, output: 15 },
   'claude-opus': { input: 15, output: 75 },
   'claude-haiku': { input: 0.8, output: 4 },
@@ -56,6 +57,15 @@ export const DEFAULT_MODEL_PRICING: Record<string, ModelPrice> = {
   'deepseek-reasoner': { input: 0.55, output: 2.19 },
 };
 
+function normalizeModelId(modelId: string): string {
+  return modelId
+    .trim()
+    .toLowerCase()
+    .replace(/^[^/\s]+\/+/, '')
+    .replace(/[:@].*$/, '')
+    .replace(/[-_](20\d{6}|\d{8})$/g, '');
+}
+
 /**
  * Resolve a price for a model id from a (user-merged) pricing table.
  * Exact match wins; otherwise the longest substring key that matches.
@@ -66,10 +76,11 @@ export function resolvePrice(
 ): ModelPrice | null {
   if (!modelId) return null;
   if (table[modelId]) return table[modelId];
-  const lower = modelId.toLowerCase();
+  const lower = normalizeModelId(modelId);
   let best: { key: string; price: ModelPrice } | null = null;
   for (const [key, price] of Object.entries(table)) {
-    if (lower.includes(key.toLowerCase())) {
+    const normalizedKey = normalizeModelId(key);
+    if (lower === normalizedKey || lower.includes(normalizedKey)) {
       if (!best || key.length > best.key.length) best = { key, price };
     }
   }
@@ -88,6 +99,24 @@ export function computeCost(
   const price = resolvePrice(modelId, table);
   if (!price) return null;
   return (inputTokens / 1e6) * price.input + (outputTokens / 1e6) * price.output;
+}
+
+export function selectUsageCost(
+  modelId: string,
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    providerReportedCost?: number;
+  },
+  table: Record<string, ModelPrice>
+): { cost: number | null; estimated: boolean } {
+  if (typeof usage.providerReportedCost === 'number') {
+    return { cost: usage.providerReportedCost, estimated: false };
+  }
+  return {
+    cost: computeCost(modelId, usage.inputTokens, usage.outputTokens, table),
+    estimated: true,
+  };
 }
 
 export function formatCost(cost: number): string {
