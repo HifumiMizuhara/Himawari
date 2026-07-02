@@ -361,6 +361,14 @@ export const Sidebar: React.FC = () => {
 
           <div className="flex items-center space-x-0.5">
             <button
+              onClick={() => store.setSettingsOpen(true)}
+              aria-label={t.settings}
+              className="min-w-11 min-h-11 md:hidden flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
+              title={t.settings}
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+            <button
               onClick={() => store.setSearchOpen(true)}
               aria-label={t.search}
               className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
@@ -520,7 +528,7 @@ export const Sidebar: React.FC = () => {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="p-3 border-t border-border-light/50 dark:border-border-dark/60 shrink-0">
+        <div className="hidden md:block p-3 border-t border-border-light/50 dark:border-border-dark/60 shrink-0">
           <button
             onClick={() => store.setSettingsOpen(true)}
               className="min-h-11 flex items-center space-x-2.5 w-full px-3 py-2.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/70 dark:hover:bg-white/4 rounded-2xl cursor-pointer transition-all duration-200"
